@@ -125,8 +125,9 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
 
 def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     """
-    Abordagem altamente tolerante para relatórios da Alterdata.
-    Identifica funcionários por código/registro e captura bases de IRRF de forma flexível.
+    Abordagem ajustada para Alterdata:
+    - Captura o código de 5 dígitos situado antes do CPF do empregado.
+    - Extrai rigorosamente o valor do campo 'Base IRRF:'.
     """
     dados_funcionarios = []
     
@@ -147,15 +148,20 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
     cpf = "N/D"
     base_irrf = "0,00"
 
-    # Padrões mais amplos para Alterdata (aceita REG, Cod, Matrícula ou variações)
-    padrao_reg = re.compile(r"(?:REG\.?:?|N\.?\s*REG\.?:?|Cód\.?:?|Matrícula:?)\s*(\d+)", re.IGNORECASE)
-    padrao_cpf = re.compile(r"(\d{3}\.\d{3}\.\d{3}-\d{2})")
-    padrao_base = re.compile(r"(?:Base\s*IRRF|Base\s*Calc\.?\s*IRRF|IRRF)[:\s]*([\d\.]+,\d{2})", re.IGNORECASE)
+    # Regex para capturar o código de 5 dígitos exato que precede o CPF
+    # Exemplo procurado na linha: código de 5 dígitos + espaços/separadores + CPF formatado
+    padrao_empregado_cpf = re.compile(r"\b(\d{5})\b.*?(\d{3}\.\d{3}\.\d{3}-\d{2})")
+    padrao_cpf_isolado = re.compile(r"(\d{3}\.\d{3}\.\d{3}-\d{2})")
+    
+    # Regex estrita para capturar o valor após "Base IRRF:"
+    padrao_base_irrf_estrito = re.compile(r"Base\s*IRRF\s*[:\s]*([\d\.]+,\d{2})", re.IGNORECASE)
 
     for linha in linhas:
-        match_reg = padrao_reg.search(linha)
-        if match_reg:
-            if emp_id:
+        # Tenta capturar o código de 5 dígitos e o CPF na mesma linha ou contexto
+        match_emp_cpf = padrao_empregado_cpf.search(linha)
+        if match_emp_cpf:
+            # Se já tivéssemos um empregado aberto, guarda antes de iniciar o próximo
+            if emp_id and base_irrf != "0,00":
                 dados_funcionarios.append({
                     "Empresa": str(codigo_empresa).strip(),
                     "Código Empregado": emp_id,
@@ -165,65 +171,40 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
                     "Base IRRF": base_irrf,
                     "Código Rubrica": str(codigo_rubrica).strip()
                 })
-                nome = "Funcionário"
-                cpf = "N/D"
                 base_irrf = "0,00"
+
+            emp_id = match_emp_cpf.group(1).strip()
+            cpf = match_emp_cpf.group(2).strip()
             
-            emp_id = match_reg.group(1).strip()
-            resto = padrao_reg.sub("", linha).strip()
-            match_c = padrao_cpf.search(resto)
-            if match_c:
-                cpf = match_c.group(1).strip()
-                resto = padrao_cpf.sub("", resto).strip()
+            # O nome geralmente está na mesma linha ou logo ao redor
+            resto = padrao_empregado_cpf.sub("", linha).strip()
             if len(resto) > 2:
                 nome = resto
             continue
 
-        match_cpf = padrao_cpf.search(linha)
-        if match_cpf and cpf == "N/D":
-            cpf = match_cpf.group(1).strip()
+        # Caso o CPF venha isolado
+        match_cpf_iso = padrao_cpf_isolado.search(linha)
+        if match_cpf_iso and cpf == "N/D":
+            cpf = match_cpf_iso.group(1).strip()
 
-        match_base = padrao_base.search(linha)
+        # Captura estrita da Base IRRF
+        match_base = padrao_base_irrf_estrito.search(linha)
         if match_base:
             base_irrf = match_base.group(1).strip()
-
-    # Adiciona o último registro capturado
-    if emp_id:
-        dados_funcionarios.append({
-            "Empresa": str(codigo_empresa).strip(),
-            "Código Empregado": emp_id,
-            "Funcionário": nome,
-            "CPF": cpf,
-            "Competência": competencia.strip(),
-            "Base IRRF": base_irrf,
-            "Código Rubrica": str(codigo_rubrica).strip()
-        })
-
-    # Caso a busca estruturada por linhas não tenha pego nada, tenta uma abordagem por blocos genéricos de valores
-    if not dados_funcionarios:
-        st.info("Tentando método alternativo de varredura por blocos para a Alterdata...")
-        # Procura por linhas que contenham números seguidos de valores monetários
-        for i, linha in enumerate(linhas):
-            match_val = re.search(r"([\d\.]+,\d{2})", linha)
-            if match_val and ("IRRF" in linha or "Base" in linha or i > 0):
-                base_encontrada = match_val.group(1)
-                # Tenta achar um código numérico próximo nas linhas anteriores
-                codigo_provavel = "1"
-                for j in range(max(0, i-3), i):
-                    match_num = re.search(r"\b(\d{1,5})\b", linhas[j])
-                    if match_num and len(match_num.group(1)) <= 5:
-                        codigo_provavel = match_num.group(1)
-                        break
-                
-                dados_funcionarios.append({
-                    "Empresa": str(codigo_empresa).strip(),
-                    "Código Empregado": codigo_provavel,
-                    "Funcionário": f"Funcionário Bloco {len(dados_funcionarios)+1}",
-                    "CPF": "N/D",
-                    "Competência": competencia.strip(),
-                    "Base IRRF": base_encontrada,
-                    "Código Rubrica": str(codigo_rubrica).strip()
-                })
+            
+            # Se já temos o empregado e a base capturada, podemos registrar o funcionário deste bloco
+            if emp_id:
+                # Evita duplicidade se já foi adicionado
+                if not any(d.get('CPF') == cpf and d.get('Código Empregado') == emp_id for d in dados_funcionarios):
+                    dados_funcionarios.append({
+                        "Empresa": str(codigo_empresa).strip(),
+                        "Código Empregado": emp_id,
+                        "Funcionário": nome,
+                        "CPF": cpf,
+                        "Competência": competencia.strip(),
+                        "Base IRRF": base_irrf,
+                        "Código Rubrica": str(codigo_rubrica).strip()
+                    })
 
     st.write(f"DEBUG - Total de registros extraídos da Alterdata: {len(dados_funcionarios)}")
     return pd.DataFrame(dados_funcionarios)
