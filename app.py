@@ -115,9 +115,7 @@ sistema_cliente = st.selectbox(
     "Selecione o Sistema / Layout do Cliente:",
     [
         "Domínio Sistemas (Thomson Reuters)",
-        # Espaço reservado caso queira incluir outros sistemas no futuro
     ]
->
 )
 
 col1, col2, col3 = st.columns(3)
@@ -139,11 +137,10 @@ if arquivos_pdf and st.button("Processar Extratos e Gerar Arquivos"):
         with open(caminho_temp, "wb") as f:
             f.write(arquivo.getbuffer())
             
-        # Direciona para o extrator correto de acordo com o sistema escolhido
         if "Domínio" in sistema_cliente:
             df_extrato = extrair_dados_extrato_dominio(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
         else:
-            df_extrato = pd.DataFrame() # Fallback
+            df_extrato = pd.DataFrame()
             
         if not df_extrato.empty:
             df_extrato["Arquivo Origem"] = arquivo.name
