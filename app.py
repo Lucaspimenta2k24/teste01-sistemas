@@ -19,11 +19,7 @@ def converter_competencia_aaamm(competencia_str):
     return comp_limpa.zfill(6)[:6]
 
 def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
-    """
-    Extração específica para o leiaute da Domínio Sistemas.
-    """
     dados_funcionarios = []
-    
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = ""
         for pagina in pdf.pages:
@@ -35,10 +31,8 @@ def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubric
         return pd.DataFrame()
 
     partes_texto = re.split(r"(?=Empr\.?:?\s*\d+)", texto_completo, flags=re.IGNORECASE)
-    
     padrao_emp = re.compile(r"Empr\.?:?\s*(\d+)", re.IGNORECASE)
     padrao_cpf = re.compile(r"(\d{3}\.\d{3}\.\d{3}-\d{2})")
-    
     padrao_base_irrf = re.compile(
         r"(?:Base\s*(?:de\s*Cálculo\s*)?(?:do\s*)?IRRF|Base\s*Calc\.?\s*IRRF|IRRF\s*Base)[:\s\n]*([\d\.]+,\d{2})", 
         re.IGNORECASE
@@ -47,16 +41,12 @@ def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubric
     for bloco in partes_texto:
         if not bloco.strip():
             continue
-            
         match_emp = padrao_emp.search(bloco)
         match_cpf = padrao_cpf.search(bloco)
-        
         if not match_emp or not match_cpf:
             continue
-            
         emp_id = match_emp.group(1).strip()
         cpf = match_cpf.group(1).strip()
-        
         match_base = padrao_base_irrf.search(bloco)
         base_irrf = match_base.group(1).strip() if match_base else "0,00"
         
@@ -83,11 +73,7 @@ def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubric
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
-    """
-    Extração específica para o leiaute da Contmatic (utiliza 'Cód:' para empregado e 'Base I.R.R.F.' para base).
-    """
     dados_funcionarios = []
-    
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = ""
         for pagina in pdf.pages:
@@ -99,20 +85,16 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
         return pd.DataFrame()
 
     partes_texto = re.split(r"(?=Cód:\s*\d+)", texto_completo, flags=re.IGNORECASE)
-    
     padrao_cod = re.compile(r"Cód:\s*(\d+)", re.IGNORECASE)
     padrao_base_irrf = re.compile(r"Base\s*I\.R\.R\.F\.?:?[\s\n]*([\d\.]+,\d{2})", re.IGNORECASE)
 
     for bloco in partes_texto:
         if not bloco.strip():
             continue
-            
         match_cod = padrao_cod.search(bloco)
         if not match_cod:
             continue
-            
         emp_id = match_cod.group(1).strip()
-        
         match_base = padrao_base_irrf.search(bloco)
         base_irrf = match_base.group(1).strip() if match_base else "0,00"
         
@@ -143,7 +125,7 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
 
 def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     """
-    Extração específica para o leiaute da Alterdata (utiliza 'N. REG:' para empregado e 'Base IRRF:' para base)[cite: 7].
+    Extração ajustada para o leiaute da Alterdata com maior flexibilidade nos rótulos e quebras de linha.
     """
     dados_funcionarios = []
     
@@ -157,12 +139,13 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
     if not texto_completo.strip():
         return pd.DataFrame()
 
-    # Divide o texto do PDF por blocos iniciados pelo padrão "N. REG: <número>"
-    partes_texto = re.split(r"(?=N\.\s*REG:\s*\d+)", texto_completo, flags=re.IGNORECASE)
+    # Divisão flexível por N. REG ou variações de espaçamento
+    partes_texto = re.split(r"(?=N\.?\s*REG\.?:?\s*\d+)", texto_completo, flags=re.IGNORECASE)
     
-    padrao_reg = re.compile(r"N\.\s*REG:\s*(\d{4})", re.IGNORECASE)
+    padrao_reg = re.compile(r"N\.?\s*REG\.?:?\s*(\d+)", re.IGNORECASE)
     padrao_cpf = re.compile(r"(\d{3}\.\d{3}\.\d{3}-\d{2})")
-    padrao_base_irrf = re.compile(r"Base\s*IRRF:?[\s\n]*([\d\.]+,\d{2})", re.IGNORECASE)
+    # Expressão mais tolerante para capturar Base IRRF mesmo com variações de espaço ou quebra
+    padrao_base_irrf = re.compile(r"Base\s*IRRF[:\s\n]*([\d\.]+,\d{2})", re.IGNORECASE)
 
     for bloco in partes_texto:
         if not bloco.strip():
@@ -180,14 +163,12 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
         match_base = padrao_base_irrf.search(bloco)
         base_irrf = match_base.group(1).strip() if match_base else "0,00"
         
-        # Tenta identificar o nome do funcionário nas primeiras linhas do bloco
+        # Coleta de nome na primeira linha do bloco
         linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
         nome = "Funcionário"
         for linha in linhas:
-            if "N. REG:" in linha:
-                # Remove a tag N. REG e o código para isolar o nome/CPF na linha
-                txt_limpo = re.sub(r"N\.\s*REG:\s*\d{4}", "", linha, flags=re.IGNORECASE).strip()
-                # Remove o CPF se estiver na mesma linha para sobrar o nome
+            if "REG" in linha:
+                txt_limpo = re.sub(r"N\.?\s*REG\.?:?\s*\d+", "", linha, flags=re.IGNORECASE).strip()
                 txt_limpo = re.sub(r"\d{3}\.\d{3}\.\d{3}-\d{2}", "", txt_limpo).strip()
                 if len(txt_limpo) > 2:
                     nome = txt_limpo
@@ -259,6 +240,7 @@ if arquivos_pdf and st.button("Processar Extratos e Gerar Arquivos"):
                 if texto_extraido:
                     texto_completo += texto_extraido + "\n"
         
+        # Caixa de depuração para conferir o texto exato do PDF na tela
         st.info(f"Depuração - Texto extraído do arquivo ({arquivo.name}):")
         st.code(texto_completo[:1200] if texto_completo else "Nenhum texto extraído deste PDF!")
             
