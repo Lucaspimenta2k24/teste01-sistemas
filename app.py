@@ -98,7 +98,7 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
     if not texto_completo.strip():
         return pd.DataFrame()
 
-    # Divide o texto do PDF por blocos iniciados pelo padrão "Cód: <número>"[cite: 7]
+    # Divide o texto do PDF por blocos iniciados pelo padrão "Cód: <número>"
     partes_texto = re.split(r"(?=Cód:\s*\d+)", texto_completo, flags=re.IGNORECASE)
     
     padrao_cod = re.compile(r"Cód:\s*(\d+)", re.IGNORECASE)
@@ -114,7 +114,6 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
             
         emp_id = match_cod.group(1).strip()
         
-        # Extração da Base I.R.R.F. específica do leiaute Contmatic[cite: 7]
         match_base = padrao_base_irrf.search(bloco)
         base_irrf = match_base.group(1).strip() if match_base else "0,00"
         
@@ -144,16 +143,6 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
     return pd.DataFrame(dados_funcionarios)
 
 def gerar_linha_posicional(row):
-    """
-    Gera a linha em formato posicional padrão de importação:
-    - 001-002 (2): Fixo "10"
-    - 003-012 (10): Código do empregado
-    - 013-018 (6): Competência ("AAAAMM")
-    - 019-027 (9): Código da rubrica
-    - 028-029 (2): Tipo do Processo "41"
-    - 030-038 (9): Valor / Base IRRF (sem pontuação)
-    - 039-048 (10): Empresa
-    """
     f_fixo = "10"
     f_emp = str(row['Código Empregado']).zfill(10)[:10]
     f_comp = converter_competencia_aaamm(row['Competência'])
@@ -171,7 +160,6 @@ def gerar_linha_posicional(row):
 st.title("Extrator de Base IRRF - Leiaute de Importação TXT")
 st.write("Selecione o sistema do cliente, configure os parâmetros e faça o upload dos extratos em PDF.")
 
-# Seletor de Modelo de Sistema atualizado (Corrigido)
 sistema_cliente = st.selectbox(
     "Selecione o Sistema / Layout do Cliente:",
     [
@@ -198,6 +186,17 @@ if arquivos_pdf and st.button("Processar Extratos e Gerar Arquivos"):
         os.makedirs("temp", exist_ok=True)
         with open(caminho_temp, "wb") as f:
             f.write(arquivo.getbuffer())
+            
+        with pdfplumber.open(caminho_temp) as pdf:
+            texto_completo = ""
+            for pagina in pdf.pages:
+                texto_extraido = pagina.extract_text()
+                if texto_extraido:
+                    texto_completo += texto_extraido + "\n"
+        
+        # Bloco de Depuração inserido para inspecionar o texto bruto na tela
+        st.info(f"Depuração - Texto extraído do arquivo ({arquivo.name}):")
+        st.code(texto_completo[:1200] if texto_completo else "Nenhum texto extraído deste PDF!")
             
         if "Domínio" in sistema_cliente:
             df_extrato = extrair_dados_extrato_dominio(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
