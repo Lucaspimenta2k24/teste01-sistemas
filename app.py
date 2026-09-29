@@ -12,55 +12,67 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Estilização CSS Moderna & Clean ---
+# --- Estilização CSS Personalizada: Azul Metálico Claro & Verde Destaque ---
 st.markdown("""
     <style>
-    /* Fundo geral da aplicação */
+    /* Fundo geral da aplicação - Azul Metálico Claro */
     .stApp {
-        background-color: #f8fafc;
+        background-color: #e8f1f5;
+        color: #1e293b;
     }
     
-    /* Cabeçalhos estilizados */
+    /* Cabeçalhos estilizados com destaque em verde/escuro */
     h1, h2, h3 {
         color: #0f172a;
         font-family: 'Inter', sans-serif;
     }
     
-    /* Botões modernos com gradiente */
+    h1 span, h2 span {
+        color: #0d9488;
+    }
+
+    /* Botões modernos com gradiente em Verde Esmeralda */
     .stButton>button {
         border-radius: 12px;
         font-weight: 600;
-        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+        background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
         color: white;
         border: none;
         padding: 0.6rem 1.4rem;
-        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3);
         transition: all 0.3s ease;
         width: 100%;
     }
     .stButton>button:hover {
-        background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
-        box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+        background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+        box-shadow: 0 6px 16px rgba(13, 148, 136, 0.4);
         transform: translateY(-2px);
     }
     
-    /* Cartões / Containers personalizados */
+    /* Cartões / Containers personalizados (Efeito Vidro/Branco Suave) */
     .custom-card {
-        background-color: #ffffff;
+        background-color: rgba(255, 255, 255, 0.85);
         padding: 1.5rem;
         border-radius: 16px;
-        box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
-        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.08);
+        border: 1px solid #cbd5e1;
         margin-bottom: 1rem;
     }
     
-    /* Ajustes da barra lateral */
+    /* Ajustes da barra lateral - Azul Metálico alinhado */
     [data-testid="stSidebar"] {
-        background-color: #0f172a;
-        color: #f8fafc;
+        background-color: #d8e5ee;
+        color: #0f172a;
+        border-right: 1px solid #cbd5e1;
     }
     [data-testid="stSidebar"] label, [data-testid="stSidebar"] .stMarkdown {
-        color: #cbd5e1 !important;
+        color: #1e293b !important;
+        font-weight: 500;
+    }
+    
+    /* Métricas e caixas de destaque */
+    [data-testid="stMetricValue"] {
+        color: #0d9488 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -84,8 +96,7 @@ def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubric
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
 
-    if not texto_completo.strip():
-        return pd.DataFrame()
+    if not texto_completo.strip(): return pd.DataFrame()
 
     partes_texto = re.split(r"(?=Empr\.?:?\s*\d+)", texto_completo, flags=re.IGNORECASE)
     padrao_emp = re.compile(r"Empr\.?:?\s*(\d+)", re.IGNORECASE)
@@ -378,7 +389,7 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
         df_final = pd.concat(todos_dados, ignore_index=True)
         
         if df_final.empty:
-            st.warning("⚠️️ Nenhum dado foi extraído. Verifique se o PDF corresponde ao leiaute selecionado.")
+            st.warning("⚠ Nenhum dado foi extraído. Verifique se o PDF corresponde ao leiaute selecionado.")
         else:
             st.success(f"🎉 Processamento concluído com sucesso! {len(df_final)} registros mapeados.")
             
