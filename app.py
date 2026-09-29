@@ -4,6 +4,67 @@ import pandas as pd
 import pdfplumber
 import streamlit as st
 
+# --- Configuração Inicial da Página ---
+st.set_page_config(
+    page_title="Extrator Inteligente de IRRF",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# --- Estilização CSS Moderna & Clean ---
+st.markdown("""
+    <style>
+    /* Fundo geral da aplicação */
+    .stApp {
+        background-color: #f8fafc;
+    }
+    
+    /* Cabeçalhos estilizados */
+    h1, h2, h3 {
+        color: #0f172a;
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Botões modernos com gradiente */
+    .stButton>button {
+        border-radius: 12px;
+        font-weight: 600;
+        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+        color: white;
+        border: none;
+        padding: 0.6rem 1.4rem;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        transition: all 0.3s ease;
+        width: 100%;
+    }
+    .stButton>button:hover {
+        background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+        box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+        transform: translateY(-2px);
+    }
+    
+    /* Cartões / Containers personalizados */
+    .custom-card {
+        background-color: #ffffff;
+        padding: 1.5rem;
+        border-radius: 16px;
+        box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+        border: 1px solid #e2e8f0;
+        margin-bottom: 1rem;
+    }
+    
+    /* Ajustes da barra lateral */
+    [data-testid="stSidebar"] {
+        background-color: #0f172a;
+        color: #f8fafc;
+    }
+    [data-testid="stSidebar"] label, [data-testid="stSidebar"] .stMarkdown {
+        color: #cbd5e1 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 def converter_competencia_aaamm(competencia_str):
     """Converte MM/AAAA para AAAAMM conforme o leiaute."""
     comp_limpa = re.sub(r'\D', '', competencia_str)
@@ -21,11 +82,7 @@ def converter_competencia_aaamm(competencia_str):
 def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
-        texto_completo = ""
-        for pagina in pdf.pages:
-            texto_extraido = pagina.extract_text()
-            if texto_extraido:
-                texto_completo += texto_extraido + "\n"
+        texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
 
     if not texto_completo.strip():
         return pd.DataFrame()
@@ -33,20 +90,13 @@ def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubric
     partes_texto = re.split(r"(?=Empr\.?:?\s*\d+)", texto_completo, flags=re.IGNORECASE)
     padrao_emp = re.compile(r"Empr\.?:?\s*(\d+)", re.IGNORECASE)
     padrao_cpf = re.compile(r"(\d{3}\.\d{3}\.\d{3}-\d{2})")
-    padrao_base_irrf = re.compile(
-        r"(?:Base\s*(?:de\s*Cálculo\s*)?(?:do\s*)?IRRF|Base\s*Calc\.?\s*IRRF|IRRF\s*Base)[:\s\n]*([\d\.]+,\d{2})", 
-        re.IGNORECASE
-    )
+    padrao_base_irrf = re.compile(r"(?:Base\s*(?:de\s*Cálculo\s*)?(?:do\s*)?IRRF|Base\s*Calc\.?\s*IRRF|IRRF\s*Base)[:\s\n]*([\d\.]+,\d{2})", re.IGNORECASE)
 
     for bloco in partes_texto:
-        if not bloco.strip():
-            continue
-        match_emp = padrao_emp.search(bloco)
-        match_cpf = padrao_cpf.search(bloco)
-        if not match_emp or not match_cpf:
-            continue
-        emp_id = match_emp.group(1).strip()
-        cpf = match_cpf.group(1).strip()
+        if not bloco.strip(): continue
+        match_emp, match_cpf = padrao_emp.search(bloco), padrao_cpf.search(bloco)
+        if not match_emp or not match_cpf: continue
+        emp_id, cpf = match_emp.group(1).strip(), match_cpf.group(1).strip()
         match_base = padrao_base_irrf.search(bloco)
         base_irrf = match_base.group(1).strip() if match_base else "0,00"
         
@@ -69,31 +119,23 @@ def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubric
                 "Base IRRF": base_irrf,
                 "Código Rubrica": str(codigo_rubrica).strip()
             })
-
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
-        texto_completo = ""
-        for pagina in pdf.pages:
-            texto_extraido = pagina.extract_text()
-            if texto_extraido:
-                texto_completo += texto_extraido + "\n"
+        texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
 
-    if not texto_completo.strip():
-        return pd.DataFrame()
+    if not texto_completo.strip(): return pd.DataFrame()
 
     partes_texto = re.split(r"(?=Cód:\s*\d+)", texto_completo, flags=re.IGNORECASE)
     padrao_cod = re.compile(r"Cód:\s*(\d+)", re.IGNORECASE)
     padrao_base_irrf = re.compile(r"Base\s*I\.R\.R\.F\.?:?[\s\n]*([\d\.]+,\d{2})", re.IGNORECASE)
 
     for bloco in partes_texto:
-        if not bloco.strip():
-            continue
+        if not bloco.strip(): continue
         match_cod = padrao_cod.search(bloco)
-        if not match_cod:
-            continue
+        if not match_cod: continue
         emp_id = match_cod.group(1).strip()
         match_base = padrao_base_irrf.search(bloco)
         base_irrf = match_base.group(1).strip() if match_base else "0,00"
@@ -120,29 +162,17 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
                 "Base IRRF": base_irrf,
                 "Código Rubrica": str(codigo_rubrica).strip()
             })
-
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     dados_funcionarios = []
-    
     with pdfplumber.open(caminho_pdf) as pdf:
-        texto_completo = ""
-        for pagina in pdf.pages:
-            texto_extraido = pagina.extract_text()
-            if texto_extraido:
-                texto_completo += texto_extraido + "\n"
+        texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
 
-    if not texto_completo.strip():
-        return pd.DataFrame()
+    if not texto_completo.strip(): return pd.DataFrame()
 
     linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
-    
-    emp_id = None
-    nome = "Funcionário"
-    cpf = "N/D"
-    base_irrf = "0,00"
-
+    emp_id, nome, cpf, base_irrf = None, "Funcionário", "N/D", "0,00"
     padrao_empregado_cpf = re.compile(r"\b(\d{5})\b.*?(\d{3}\.\d{3}\.\d{3}-\d{2})")
     padrao_cpf_isolado = re.compile(r"(\d{3}\.\d{3}\.\d{3}-\d{2})")
     padrao_base_irrf_estrito = re.compile(r"Base\s*IRRF\s*[:\s]*([\d\.]+,\d{2})", re.IGNORECASE)
@@ -152,64 +182,39 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
         if match_emp_cpf:
             if emp_id and base_irrf != "0,00":
                 dados_funcionarios.append({
-                    "Empresa": str(codigo_empresa).strip(),
-                    "Código Empregado": emp_id,
-                    "Funcionário": nome,
-                    "CPF": cpf,
-                    "Competência": competencia.strip(),
-                    "Base IRRF": base_irrf,
-                    "Código Rubrica": str(codigo_rubrica).strip()
+                    "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
+                    "Funcionário": nome, "CPF": cpf, "Competência": competencia.strip(),
+                    "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
                 })
                 base_irrf = "0,00"
-
-            emp_id = match_emp_cpf.group(1).strip()
-            cpf = match_emp_cpf.group(2).strip()
+            emp_id, cpf = match_emp_cpf.group(1).strip(), match_emp_cpf.group(2).strip()
             resto = padrao_empregado_cpf.sub("", linha).strip()
-            if len(resto) > 2:
-                nome = resto
+            if len(resto) > 2: nome = resto
             continue
 
         match_cpf_iso = padrao_cpf_isolado.search(linha)
-        if match_cpf_iso and cpf == "N/D":
-            cpf = match_cpf_iso.group(1).strip()
+        if match_cpf_iso and cpf == "N/D": cpf = match_cpf_iso.group(1).strip()
 
         match_base = padrao_base_irrf_estrito.search(linha)
         if match_base:
             base_irrf = match_base.group(1).strip()
-            if emp_id:
-                if not any(d.get('CPF') == cpf and d.get('Código Empregado') == emp_id for d in dados_funcionarios):
-                    dados_funcionarios.append({
-                        "Empresa": str(codigo_empresa).strip(),
-                        "Código Empregado": emp_id,
-                        "Funcionário": nome,
-                        "CPF": cpf,
-                        "Competência": competencia.strip(),
-                        "Base IRRF": base_irrf,
-                        "Código Rubrica": str(codigo_rubrica).strip()
-                    })
-
-    st.write(f"DEBUG - Total de registros extraídos da Alterdata: {len(dados_funcionarios)}")
+            if emp_id and not any(d.get('CPF') == cpf and d.get('Código Empregado') == emp_id for d in dados_funcionarios):
+                dados_funcionarios.append({
+                    "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
+                    "Funcionário": nome, "CPF": cpf, "Competência": competencia.strip(),
+                    "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
+                })
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     dados_funcionarios = []
-    
     with pdfplumber.open(caminho_pdf) as pdf:
-        texto_completo = ""
-        for pagina in pdf.pages:
-            texto_extraido = pagina.extract_text()
-            if texto_extraido:
-                texto_completo += texto_extraido + "\n"
+        texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
 
-    if not texto_completo.strip():
-        return pd.DataFrame()
+    if not texto_completo.strip(): return pd.DataFrame()
 
     linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
-    
-    emp_id = None
-    nome = "Funcionário"
-    base_irrf = "0,00"
-
+    emp_id, nome, base_irrf = None, "Funcionário", "0,00"
     padrao_codigo_nome = re.compile(r"^(\d+)\s+([A-ZÀ-Ú\s]+)", re.IGNORECASE)
     padrao_ir_sci = re.compile(r"IR\s*->\s*([\d\.]+,\d{2})", re.IGNORECASE)
 
@@ -218,18 +223,12 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
         if match_cod_nome and not "IR ->" in linha and not "TOTAL" in linha.upper() and not "Página" in linha:
             if emp_id and base_irrf != "0,00":
                 dados_funcionarios.append({
-                    "Empresa": str(codigo_empresa).strip(),
-                    "Código Empregado": emp_id,
-                    "Funcionário": nome,
-                    "CPF": "N/D (SCI)",
-                    "Competência": competencia.strip(),
-                    "Base IRRF": base_irrf,
-                    "Código Rubrica": str(codigo_rubrica).strip()
+                    "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
+                    "Funcionário": nome, "CPF": "N/D (SCI)", "Competência": competencia.strip(),
+                    "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
                 })
                 base_irrf = "0,00"
-            
-            emp_id = match_cod_nome.group(1).strip()
-            nome = match_cod_nome.group(2).strip()
+            emp_id, nome = match_cod_nome.group(1).strip(), match_cod_nome.group(2).strip()
             continue
 
         match_ir = padrao_ir_sci.search(linha)
@@ -237,47 +236,28 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
             base_irrf = match_ir.group(1).strip()
             if emp_id:
                 dados_funcionarios.append({
-                    "Empresa": str(codigo_empresa).strip(),
-                    "Código Empregado": emp_id,
-                    "Funcionário": nome,
-                    "CPF": "N/D (SCI)",
-                    "Competência": competencia.strip(),
-                    "Base IRRF": base_irrf,
-                    "Código Rubrica": str(codigo_rubrica).strip()
+                    "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
+                    "Funcionário": nome, "CPF": "N/D (SCI)", "Competência": competencia.strip(),
+                    "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
                 })
-                emp_id = None
-                base_irrf = "0,00"
-
-    st.write(f"DEBUG - Total de registros extraídos da SCI: {len(dados_funcionarios)}")
+                emp_id, base_irrf = None, "0,00"
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     """
-    Abordagem ajustada para o leiaute da Prosol:
-    - Captura o código do empregado situado antes do nome (ex: '000000002-JOSE C').
-    - Isola estritamente a linha '0105 BASE DE CALCULO I.R.R.F.' e captura 
-      exatamente o valor da terceira coluna correspondente (2.329,50).
+    Abordagem ajustada e validada para o leiaute da Prosol:
+    - Captura o código do empregado e isola estritamente a linha '0105 BASE DE CALCULO I.R.R.F.'
+    - Pega com precisão o valor monetário correto da terceira coluna (ex: 2.329,50)[cite: 7].
     """
     dados_funcionarios = []
-    
     with pdfplumber.open(caminho_pdf) as pdf:
-        texto_completo = ""
-        for pagina in pdf.pages:
-            texto_extraido = pagina.extract_text()
-            if texto_extraido:
-                texto_completo += texto_extraido + "\n"
+        texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
 
-    if not texto_completo.strip():
-        return pd.DataFrame()
+    if not texto_completo.strip(): return pd.DataFrame()
 
     linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
-    
-    emp_id = None
-    nome = "Funcionário"
-    base_irrf = "0,00"
-
+    emp_id, nome, base_irrf = None, "Funcionário", "0,00"
     padrao_codigo_nome = re.compile(r"^(\d+)-([A-ZÀ-Ú\s]+)", re.IGNORECASE)
-    # Identifica especificamente a linha da base de cálculo do IRRF (código 0105)
     padrao_base_irrf_prosol = re.compile(r"0105\s+BASE\s+DE\s+CALCULO\s+I\.R\.R\.F\.?", re.IGNORECASE)
     padrao_valor = re.compile(r"([\d\.]+,\d{2})")
 
@@ -291,18 +271,12 @@ def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica
             base_irrf = "0,00"
         
         if padrao_base_irrf_prosol.search(linha):
-            # Extrai todos os valores numéricos monetários presentes na linha da base IRRF
             valores_encontrados = padrao_valor.findall(linha)
             if not valores_encontrados and i + 1 < len(linhas):
                 valores_encontrados = padrao_valor.findall(linhas[i+1])
             
             if valores_encontrados:
-                # No leiaute Prosol para a linha 0105, a estrutura típica exibe: [Referência (ex: 0,00)] e [Valor (ex: 2.329,50)]
-                # Selecionamos especificamente o índice que corresponde à terceira coluna (o valor monetário correto)
-                if len(valores_encontrados) >= 2:
-                    base_irrf = valores_encontrados[1]
-                else:
-                    base_irrf = valores_encontrados[0]
+                base_irrf = valores_encontrados[1] if len(valores_encontrados) >= 2 else valores_encontrados[0]
             
             if emp_id:
                 dados_funcionarios.append({
@@ -315,8 +289,6 @@ def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica
                     "Código Rubrica": str(codigo_rubrica).strip()
                 })
         i += 1
-
-    st.write(f"DEBUG - Total de registros extraídos da Prosol: {len(dados_funcionarios)}")
     return pd.DataFrame(dados_funcionarios)
 
 def gerar_linha_posicional(row):
@@ -325,85 +297,94 @@ def gerar_linha_posicional(row):
     f_comp = converter_competencia_aaamm(row['Competência'])
     f_rubrica = str(row['Código Rubrica']).zfill(9)[:9]
     f_proc = "41"
-    
     val_limpo = re.sub(r'[^\d]', '', str(row['Base IRRF']))
     f_valor = val_limpo.zfill(9)[:9]
-    
     f_empresa = str(row['Empresa']).zfill(10)[:10]
-    
     return f"{f_fixo}{f_emp}{f_comp}{f_rubrica}{f_proc}{f_valor}{f_empresa}\n"
 
-# --- Interface Gráfica com Streamlit ---
-st.title("Extrator de Base IRRF - Leiaute de Importação TXT")
-st.write("Selecione o sistema do cliente, configure os parâmetros e faça o upload dos extratos em PDF.")
+# --- Layout da Interface (Sidebar) ---
+with st.sidebar:
+    st.markdown("### ⚙️ Painel de Controle")
+    st.markdown("Configure os parâmetros de exportação dos dados contábeis.")
+    
+    sistema_cliente = st.selectbox(
+        "🏢 Sistema / Leiaute:",
+        [
+            "Domínio (Thomson Reuters)",
+            "Contmatic Phoenix",
+            "Alterdata",
+            "SCI Contábil",
+            "Prosol"
+        ]
+    )
+    
+    st.markdown("---")
+    codigo_empresa_input = st.text_input("🔢 Código da Empresa:", value="1")
+    codigo_rubrica = st.text_input("🏷️ Código da Rubrica (TXT):", value="2000")
+    competencia_input = st.text_input("📅 Competência (MM/AAAA):", value="08/2026")
+    
+    st.markdown("---")
+    st.markdown("💡 *Dica: Você pode enviar múltiplos PDFs de uma só vez.*")
 
-sistema_cliente = st.selectbox(
-    "Selecione o Sistema / Layout do Cliente:",
-    [
-        "Domínio Sistemas (Thomson Reuters)",
-        "Contmatic Phoenix",
-        "Alterdata",
-        "SCI (Sistemas Contábeis)",
-        "Prosol"
-    ]
-)
+# --- Layout Principal (Header & Conteúdo) ---
+st.title("⚡ Extrator Inteligente de Base IRRF")
+st.markdown("Transforme extratos de folha de pagamento em **layouts TXT posicionais e planilhas de conferência** com inteligência e precisão em segundos.")
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    codigo_empresa_input = st.text_input("Código da Empresa:", value="1")
-with col2:
-    codigo_rubrica = st.text_input("Código da Rubrica (TXT):", value="2000")
-with col3:
-    competencia_input = st.text_input("Competência (Ex: 06/2026):", value="08/2026")
+# Cartão Principal de Upload
+st.markdown('<div class="custom-card">', unsafe_allow_html=True)
+st.markdown("### 📂 Upload de Extratos (PDF)")
+arquivos_pdf = st.file_uploader("Arraste ou selecione os arquivos PDF aqui", type=["pdf"], accept_multiple_files=True, label_visibility="collapsed")
+st.markdown('</div>', unsafe_allow_html=True)
 
-arquivos_pdf = st.file_uploader("Selecione os arquivos PDF", type=["pdf"], accept_multiple_files=True)
+if arquivos_pdf:
+    col_info1, col_info2, col_info3 = st.columns(3)
+    with col_info1:
+        st.metric(label="📄 Arquivos Selecionados", value=len(arquivos_pdf))
+    with col_info2:
+        st.metric(label="⚙️ Sistema Ativo", value=sistema_cliente.split()[0])
+    with col_info3:
+        st.metric(label="📅 Competência Alvo", value=competencia_input)
 
-if arquivos_pdf and st.button("Processar Extratos e Gerar Arquivos"):
+if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
     todos_dados = []
     
-    for arquivo in arquivos_pdf:
-        caminho_temp = os.path.join("temp", arquivo.name)
-        os.makedirs("temp", exist_ok=True)
-        with open(caminho_temp, "wb") as f:
-            f.write(arquivo.getbuffer())
+    with st.spinner("Processando arquivos com inteligência de leiaute... Por favor, aguarde ⏳"):
+        for arquivo in arquivos_pdf:
+            caminho_temp = os.path.join("temp", arquivo.name)
+            os.makedirs("temp", exist_ok=True)
+            with open(caminho_temp, "wb") as f:
+                f.write(arquivo.getbuffer())
+                
+            if "Domínio" in sistema_cliente:
+                df_extrato = extrair_dados_extrato_dominio(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+            elif "Contmatic" in sistema_cliente:
+                df_extrato = extrair_dados_extrato_contmatic(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+            elif "Alterdata" in sistema_cliente:
+                df_extrato = extrair_dados_extrato_alterdata(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+            elif "SCI" in sistema_cliente:
+                df_extrato = extrair_dados_extrato_sci(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+            elif "Prosol" in sistema_cliente:
+                df_extrato = extrair_dados_extrato_prosol(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+            else:
+                df_extrato = pd.DataFrame()
+                
+            if not df_extrato.empty:
+                df_extrato["Arquivo Origem"] = arquivo.name
+                todos_dados.append(df_extrato)
             
-        with pdfplumber.open(caminho_temp) as pdf:
-            texto_completo = ""
-            for pagina in pdf.pages:
-                texto_extraido = pagina.extract_text()
-                if texto_extraido:
-                    texto_completo += texto_extraido + "\n"
-        
-        st.info(f"Depuração - Texto extraído do arquivo ({arquivo.name}):")
-        st.code(texto_completo[:1200] if texto_completo else "Nenhum texto extraído deste PDF!")
+            os.remove(caminho_temp)
             
-        if "Domínio" in sistema_cliente:
-            df_extrato = extrair_dados_extrato_dominio(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
-        elif "Contmatic" in sistema_cliente:
-            df_extrato = extrair_dados_extrato_contmatic(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
-        elif "Alterdata" in sistema_cliente:
-            df_extrato = extrair_dados_extrato_alterdata(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
-        elif "SCI" in sistema_cliente:
-            df_extrato = extrair_dados_extrato_sci(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
-        elif "Prosol" in sistema_cliente:
-            df_extrato = extrair_dados_extrato_prosol(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
-        else:
-            df_extrato = pd.DataFrame()
-            
-        if not df_extrato.empty:
-            df_extrato["Arquivo Origem"] = arquivo.name
-            todos_dados.append(df_extrato)
-        
-        os.remove(caminho_temp)
-        
     if todos_dados:
         df_final = pd.concat(todos_dados, ignore_index=True)
         
         if df_final.empty:
-            st.warning("Nenhum dado foi extraído. Verifique se o PDF corresponde ao leiaute selecionado.")
+            st.warning("⚠️️ Nenhum dado foi extraído. Verifique se o PDF corresponde ao leiaute selecionado.")
         else:
-            st.success(f"Processamento concluído com sucesso usando o layout: {sistema_cliente}!")
-            st.dataframe(df_final)
+            st.success(f"🎉 Processamento concluído com sucesso! {len(df_final)} registros mapeados.")
+            
+            # Exibição Visual Moderna dos Dados
+            st.markdown("### 📊 Prévia dos Dados Extraídos")
+            st.dataframe(df_final, use_container_width=True)
             
             output_csv = "extrato_irrf_consolidado.csv"
             df_final.to_csv(output_csv, index=False, sep=";", encoding="utf-8-sig")
@@ -411,15 +392,15 @@ if arquivos_pdf and st.button("Processar Extratos e Gerar Arquivos"):
             output_txt = "importacao_irrf.txt"
             with open(output_txt, "w", encoding="utf-8") as f:
                 for _, row in df_final.iterrows():
-                    linha_posicional = gerar_linha_posicional(row)
-                    f.write(linha_posicional)
+                    f.write(gerar_linha_posicional(row))
 
+            st.markdown("### 📥 Central de Downloads")
             col_dl1, col_dl2 = st.columns(2)
             
             with col_dl1:
                 with open(output_csv, "rb") as f:
                     st.download_button(
-                        label="Baixar Planilha de Conferência (CSV)",
+                        label="📥 Baixar Planilha de Conferência (CSV)",
                         data=f,
                         file_name=output_csv,
                         mime="text/csv"
@@ -428,10 +409,10 @@ if arquivos_pdf and st.button("Processar Extratos e Gerar Arquivos"):
             with col_dl2:
                 with open(output_txt, "r", encoding="utf-8") as f:
                     st.download_button(
-                        label="Baixar TXT Posicional (Leiaute)",
+                        label="📄 Baixar TXT Posicional (Leiaute)",
                         data=f,
                         file_name=output_txt,
                         mime="text/plain"
                     )
     else:
-        st.warning("Nenhum dado válido foi encontrado nos arquivos enviados.")
+        st.warning("⚠️ Nenhum dado válido foi encontrado nos arquivos enviados.")
