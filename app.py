@@ -125,7 +125,7 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
 
 def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     """
-    Extração ajustada para o leiaute da Alterdata com maior flexibilidade nos rótulos e quebras de linha.
+    Nova abordagem baseada em varredura por linhas para garantir a captura correta no leiaute Alterdata.
     """
     dados_funcionarios = []
     
@@ -139,51 +139,75 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
     if not texto_completo.strip():
         return pd.DataFrame()
 
-    # Divisão flexível por N. REG ou variações de espaçamento
-    partes_texto = re.split(r"(?=N\.?\s*REG\.?:?\s*\d+)", texto_completo, flags=re.IGNORECASE)
+    linhas = texto_completo.split("\n")
     
+    emp_id = None
+    nome = "Funcionário"
+    cpf = "N/D"
+    base_irrf = "0,00"
+
+    # Regex auxiliares
     padrao_reg = re.compile(r"N\.?\s*REG\.?:?\s*(\d+)", re.IGNORECASE)
     padrao_cpf = re.compile(r"(\d{3}\.\d{3}\.\d{3}-\d{2})")
-    # Expressão mais tolerante para capturar Base IRRF mesmo com variações de espaço ou quebra
-    padrao_base_irrf = re.compile(r"Base\s*IRRF[:\s\n]*([\d\.]+,\d{2})", re.IGNORECASE)
+    padrao_base = re.compile(r"Base\s*IRRF[:\s]*([\d\.]+,\d{2})", re.IGNORECASE)
 
-    for bloco in partes_texto:
-        if not bloco.strip():
+    for linha in linhas:
+        linha_limpa = linha.strip()
+        if not linha_limpa:
             continue
             
-        match_reg = padrao_reg.search(bloco)
-        if not match_reg:
-            continue
+        # Detecta o registro/código do funcionário
+        match_reg = padrao_reg.search(linha_limpa)
+        if match_reg:
+            # Se já tivermos dados acumulados de um funcionário anterior, salvamos antes de iniciar o próximo
+            if emp_id:
+                dados_funcionarios.append({
+                    "Empresa": str(codigo_empresa).strip(),
+                    "Código Empregado": emp_id,
+                    "Funcionário": nome,
+                    "CPF": cpf,
+                    "Competência": competencia.strip(),
+                    "Base IRRF": base_irrf,
+                    "Código Rubrica": str(codigo_rubrica).strip()
+                })
+                # Reseta as variáveis para o próximo funcionário
+                nome = "Funcionário"
+                cpf = "N/D"
+                base_irrf = "0,00"
             
-        emp_id = match_reg.group(1).strip()
-        
-        match_cpf = padrao_cpf.search(bloco)
-        cpf = match_cpf.group(1).strip() if match_cpf else "N/D"
-        
-        match_base = padrao_base_irrf.search(bloco)
-        base_irrf = match_base.group(1).strip() if match_base else "0,00"
-        
-        # Coleta de nome na primeira linha do bloco
-        linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
-        nome = "Funcionário"
-        for linha in linhas:
-            if "REG" in linha:
-                txt_limpo = re.sub(r"N\.?\s*REG\.?:?\s*\d+", "", linha, flags=re.IGNORECASE).strip()
-                txt_limpo = re.sub(r"\d{3}\.\d{3}\.\d{3}-\d{2}", "", txt_limpo).strip()
-                if len(txt_limpo) > 2:
-                    nome = txt_limpo
-                    break
+            emp_id = match_reg.group(1).strip()
+            # Tenta isolar o nome na mesma linha se houver texto além do código
+            resto_linha = padrao_reg.sub("", linha_limpa).strip()
+            match_c = padrao_cpf.search(resto_linha)
+            if match_c:
+                cpf = match_c.group(1).strip()
+                resto_linha = padrao_cpf.sub("", resto_linha).strip()
+            if len(resto_linha) > 2:
+                nome = resto_linha
+            continue
 
-        if emp_id:
-            dados_funcionarios.append({
-                "Empresa": str(codigo_empresa).strip(),
-                "Código Empregado": emp_id,
-                "Funcionário": nome,
-                "CPF": cpf,
-                "Competência": competencia.strip(),
-                "Base IRRF": base_irrf,
-                "Código Rubrica": str(codigo_rubrica).strip()
-            })
+        # Se encontrou o CPF isolado em uma linha
+        match_cpf = padrao_cpf.search(linha_limpa)
+        if match_cpf and cpf == "N/D":
+            cpf = match_cpf.group(1).strip()
+            continue
+
+        # Se encontrou a base de IRRF
+        match_base = padrao_base.search(linha_limpa)
+        if match_base:
+            base_irrf = match_base.group(1).strip()
+
+    # Adiciona o último funcionário processado do arquivo
+    if emp_id:
+        dados_funcionarios.append({
+            "Empresa": str(codigo_empresa).strip(),
+            "Código Empregado": emp_id,
+            "Funcionário": nome,
+            "CPF": cpf,
+            "Competência": competencia.strip(),
+            "Base IRRF": base_irrf,
+            "Código Rubrica": str(codigo_rubrica).strip()
+        })
 
     return pd.DataFrame(dados_funcionarios)
 
@@ -240,7 +264,6 @@ if arquivos_pdf and st.button("Processar Extratos e Gerar Arquivos"):
                 if texto_extraido:
                     texto_completo += texto_extraido + "\n"
         
-        # Caixa de depuração para conferir o texto exato do PDF na tela
         st.info(f"Depuração - Texto extraído do arquivo ({arquivo.name}):")
         st.code(texto_completo[:1200] if texto_completo else "Nenhum texto extraído deste PDF!")
             
