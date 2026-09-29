@@ -192,11 +192,6 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
-    """
-    Abordagem ajustada para o leiaute da SCI:
-    - Captura o código do empregado situado antes do nome (ex: '5 Ricardo Horista de Souza').
-    - Captura a base do IRRF associada ao campo com o marcador 'IR ->'.
-    """
     dados_funcionarios = []
     
     with pdfplumber.open(caminho_pdf) as pdf:
@@ -256,6 +251,68 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
     st.write(f"DEBUG - Total de registros extraídos da SCI: {len(dados_funcionarios)}")
     return pd.DataFrame(dados_funcionarios)
 
+def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+    """
+    Abordagem ajustada para o leiaute da Prosol:
+    - Captura o código do empregado situado antes do nome (ex: '000000002-JOSE C').
+    - Captura a base do IRRF associada à descrição 'BASE DE CALCULO I.R.R.F.'.
+    """
+    dados_funcionarios = []
+    
+    with pdfplumber.open(caminho_pdf) as pdf:
+        texto_completo = ""
+        for pagina in pdf.pages:
+            texto_extraido = pagina.extract_text()
+            if texto_extraido:
+                texto_completo += texto_extraido + "\n"
+
+    if not texto_completo.strip():
+        return pd.DataFrame()
+
+    linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
+    
+    emp_id = None
+    nome = "Funcionário"
+    base_irrf = "0,00"
+
+    padrao_codigo_nome = re.compile(r"^(\d+)-([A-ZÀ-Ú\s]+)", re.IGNORECASE)
+    padrao_base_irrf_prosol = re.compile(r"BASE\s*DE\s*CALCULO\s*I\.R\.R\.F\.?", re.IGNORECASE)
+    padrao_valor = re.compile(r"([\d\.]+,\d{2})")
+
+    i = 0
+    while i < len(linhas):
+        linha = linhas[i]
+        match_cod_nome = padrao_codigo_nome.search(linha)
+        if match_cod_nome:
+            emp_id = match_cod_nome.group(1).strip()
+            nome = match_cod_nome.group(2).strip()
+            base_irrf = "0,00"
+        
+        if padrao_base_irrf_prosol.search(linha):
+            valores_encontrados = padrao_valor.findall(linha)
+            if not valores_encontrados and i + 1 < len(linhas):
+                valores_encontrados = padrao_valor.findall(linhas[i+1])
+            if not valores_encontrados and i + 2 < len(linhas):
+                valores_encontrados = padrao_valor.findall(linhas[i+2])
+            
+            if valores_encontrados:
+                base_irrf = valores_encontrados[-1]
+            
+            if emp_id:
+                dados_funcionarios.append({
+                    "Empresa": str(codigo_empresa).strip(),
+                    "Código Empregado": emp_id,
+                    "Funcionário": nome,
+                    "CPF": "N/D (Prosol)",
+                    "Competência": competencia.strip(),
+                    "Base IRRF": base_irrf,
+                    "Código Rubrica": str(codigo_rubrica).strip()
+                })
+        i += 1
+
+    st.write(f"DEBUG - Total de registros extraídos da Prosol: {len(dados_funcionarios)}")
+    return pd.DataFrame(dados_funcionarios)
+
 def gerar_linha_posicional(row):
     f_fixo = "10"
     f_emp = str(row['Código Empregado']).zfill(10)[:10]
@@ -280,7 +337,8 @@ sistema_cliente = st.selectbox(
         "Domínio Sistemas (Thomson Reuters)",
         "Contmatic Phoenix",
         "Alterdata",
-        "SCI (Sistemas Contábeis)"
+        "SCI (Sistemas Contábeis)",
+        "Prosol"
     ]
 )
 
@@ -290,7 +348,7 @@ with col1:
 with col2:
     codigo_rubrica = st.text_input("Código da Rubrica (TXT):", value="2000")
 with col3:
-    competencia_input = st.text_input("Competência (Ex: 06/2026):", value="09/2026")
+    competencia_input = st.text_input("Competência (Ex: 06/2026):", value="08/2026")
 
 arquivos_pdf = st.file_uploader("Selecione os arquivos PDF", type=["pdf"], accept_multiple_files=True)
 
@@ -321,6 +379,8 @@ if arquivos_pdf and st.button("Processar Extratos e Gerar Arquivos"):
             df_extrato = extrair_dados_extrato_alterdata(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
         elif "SCI" in sistema_cliente:
             df_extrato = extrair_dados_extrato_sci(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+        elif "Prosol" in sistema_cliente:
+            df_extrato = extrair_dados_extrato_prosol(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
         else:
             df_extrato = pd.DataFrame()
             
@@ -345,7 +405,7 @@ if arquivos_pdf and st.button("Processar Extratos e Gerar Arquivos"):
             output_txt = "importacao_irrf.txt"
             with open(output_txt, "w", encoding="utf-8") as f:
                 for _, row in df_final.iterrows():
-                    linha_posicional =gerar_linha_posicional(row)
+                    linha_posicional = gerar_linha_posicional(row)
                     f.write(linha_posicional)
 
             col_dl1, col_dl2 = st.columns(2)
