@@ -12,67 +12,78 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Estilização CSS Personalizada: Azul Metálico Claro & Verde Destaque ---
+# --- Estilização CSS: Fundo Escuro + Textos em Verde Esmeralda Neon ---
 st.markdown("""
     <style>
-    /* Fundo geral da aplicação - Azul Metálico Claro */
+    /* Fundo geral da aplicação - Escuro Profundo */
     .stApp {
-        background-color: #e8f1f5;
-        color: #1e293b;
+        background-color: #090d16;
+        color: #00ffcc !important;
     }
     
-    /* Cabeçalhos estilizados com destaque em verde/escuro */
-    h1, h2, h3 {
-        color: #0f172a;
+    /* Forçar todas as palavras, títulos, subtítulos e textos em Verde Neon */
+    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown, .stText {
+        color: #00ffcc !important;
         font-family: 'Inter', sans-serif;
     }
     
-    h1 span, h2 span {
-        color: #0d9488;
+    /* Inputs, textos digitados e selects com texto verde */
+    input, select, textarea {
+        color: #00ffcc !important;
+        background-color: #111827 !important;
+        border-color: #00ffcc !important;
     }
 
-    /* Botões modernos com gradiente em Verde Esmeralda */
+    /* Botões modernos com gradiente em Verde Esmeralda Neon */
     .stButton>button {
         border-radius: 12px;
-        font-weight: 600;
-        background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
-        color: white;
+        font-weight: 700;
+        background: linear-gradient(135deg, #00ffcc 0%, #00b386 100%);
+        color: #090d16 !important;
         border: none;
         padding: 0.6rem 1.4rem;
-        box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3);
+        box-shadow: 0 4px 15px rgba(0, 255, 204, 0.4);
         transition: all 0.3s ease;
         width: 100%;
     }
     .stButton>button:hover {
-        background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
-        box-shadow: 0 6px 16px rgba(13, 148, 136, 0.4);
+        background: linear-gradient(135deg, #00b386 0%, #008060 100%);
+        box-shadow: 0 6px 20px rgba(0, 255, 204, 0.6);
         transform: translateY(-2px);
     }
     
-    /* Cartões / Containers personalizados (Efeito Vidro/Branco Suave) */
+    /* Cartões / Containers personalizados com borda neon suave */
     .custom-card {
-        background-color: rgba(255, 255, 255, 0.85);
+        background-color: #111827;
         padding: 1.5rem;
         border-radius: 16px;
-        box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.08);
-        border: 1px solid #cbd5e1;
+        box-shadow: 0 4px 20px -2px rgba(0, 255, 204, 0.1);
+        border: 1px solid rgba(0, 255, 204, 0.3);
         margin-bottom: 1rem;
     }
     
-    /* Ajustes da barra lateral - Azul Metálico alinhado */
+    /* Ajustes da barra lateral escura */
     [data-testid="stSidebar"] {
-        background-color: #d8e5ee;
-        color: #0f172a;
-        border-right: 1px solid #cbd5e1;
+        background-color: #0d1322;
+        color: #00ffcc !important;
+        border-right: 1px solid rgba(0, 255, 204, 0.2);
     }
-    [data-testid="stSidebar"] label, [data-testid="stSidebar"] .stMarkdown {
-        color: #1e293b !important;
-        font-weight: 500;
+    [data-testid="stSidebar"] * {
+        color: #00ffcc !important;
     }
     
     /* Métricas e caixas de destaque */
     [data-testid="stMetricValue"] {
-        color: #0d9488 !important;
+        color: #00ffcc !important;
+        text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+    }
+    
+    /* File Uploader customizado */
+    [data-testid="stFileUploader"] {
+        background-color: #111827;
+        border: 2px dashed rgba(0, 255, 204, 0.4);
+        border-radius: 12px;
+        padding: 1rem;
     }
     </style>
 """, unsafe_allow_html=True)
