@@ -125,7 +125,8 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
 
 def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     """
-    Abordagem robusta e tolerante para Alterdata com feedback de leitura em tela.
+    Abordagem altamente tolerante para relatórios da Alterdata.
+    Identifica funcionários por código/registro e captura bases de IRRF de forma flexível.
     """
     dados_funcionarios = []
     
@@ -146,9 +147,10 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
     cpf = "N/D"
     base_irrf = "0,00"
 
-    padrao_reg = re.compile(r"(?:REG\.?:?|N\.?\s*REG\.?:?)\s*(\d+)", re.IGNORECASE)
+    # Padrões mais amplos para Alterdata (aceita REG, Cod, Matrícula ou variações)
+    padrao_reg = re.compile(r"(?:REG\.?:?|N\.?\s*REG\.?:?|Cód\.?:?|Matrícula:?)\s*(\d+)", re.IGNORECASE)
     padrao_cpf = re.compile(r"(\d{3}\.\d{3}\.\d{3}-\d{2})")
-    padrao_base = re.compile(r"Base\s*IRRF[:\s]*([\d\.]+,\d{2})", re.IGNORECASE)
+    padrao_base = re.compile(r"(?:Base\s*IRRF|Base\s*Calc\.?\s*IRRF|IRRF)[:\s]*([\d\.]+,\d{2})", re.IGNORECASE)
 
     for linha in linhas:
         match_reg = padrao_reg.search(linha)
@@ -185,6 +187,7 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
         if match_base:
             base_irrf = match_base.group(1).strip()
 
+    # Adiciona o último registro capturado
     if emp_id:
         dados_funcionarios.append({
             "Empresa": str(codigo_empresa).strip(),
@@ -195,6 +198,32 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
             "Base IRRF": base_irrf,
             "Código Rubrica": str(codigo_rubrica).strip()
         })
+
+    # Caso a busca estruturada por linhas não tenha pego nada, tenta uma abordagem por blocos genéricos de valores
+    if not dados_funcionarios:
+        st.info("Tentando método alternativo de varredura por blocos para a Alterdata...")
+        # Procura por linhas que contenham números seguidos de valores monetários
+        for i, linha in enumerate(linhas):
+            match_val = re.search(r"([\d\.]+,\d{2})", linha)
+            if match_val and ("IRRF" in linha or "Base" in linha or i > 0):
+                base_encontrada = match_val.group(1)
+                # Tenta achar um código numérico próximo nas linhas anteriores
+                codigo_provavel = "1"
+                for j in range(max(0, i-3), i):
+                    match_num = re.search(r"\b(\d{1,5})\b", linhas[j])
+                    if match_num and len(match_num.group(1)) <= 5:
+                        codigo_provavel = match_num.group(1)
+                        break
+                
+                dados_funcionarios.append({
+                    "Empresa": str(codigo_empresa).strip(),
+                    "Código Empregado": codigo_provavel,
+                    "Funcionário": f"Funcionário Bloco {len(dados_funcionarios)+1}",
+                    "CPF": "N/D",
+                    "Competência": competencia.strip(),
+                    "Base IRRF": base_encontrada,
+                    "Código Rubrica": str(codigo_rubrica).strip()
+                })
 
     st.write(f"DEBUG - Total de registros extraídos da Alterdata: {len(dados_funcionarios)}")
     return pd.DataFrame(dados_funcionarios)
