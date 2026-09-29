@@ -98,7 +98,6 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
     if not texto_completo.strip():
         return pd.DataFrame()
 
-    # Divide o texto do PDF por blocos iniciados pelo padrão "Cód: <número>"
     partes_texto = re.split(r"(?=Cód:\s*\d+)", texto_completo, flags=re.IGNORECASE)
     
     padrao_cod = re.compile(r"Cód:\s*(\d+)", re.IGNORECASE)
@@ -142,6 +141,71 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
 
     return pd.DataFrame(dados_funcionarios)
 
+def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+    """
+    Extração específica para o leiaute da Alterdata (utiliza 'N. REG:' para empregado e 'Base IRRF:' para base)[cite: 7].
+    """
+    dados_funcionarios = []
+    
+    with pdfplumber.open(caminho_pdf) as pdf:
+        texto_completo = ""
+        for pagina in pdf.pages:
+            texto_extraido = pagina.extract_text()
+            if texto_extraido:
+                texto_completo += texto_extraido + "\n"
+
+    if not texto_completo.strip():
+        return pd.DataFrame()
+
+    # Divide o texto do PDF por blocos iniciados pelo padrão "N. REG: <número>"
+    partes_texto = re.split(r"(?=N\.\s*REG:\s*\d+)", texto_completo, flags=re.IGNORECASE)
+    
+    padrao_reg = re.compile(r"N\.\s*REG:\s*(\d{4})", re.IGNORECASE)
+    padrao_cpf = re.compile(r"(\d{3}\.\d{3}\.\d{3}-\d{2})")
+    padrao_base_irrf = re.compile(r"Base\s*IRRF:?[\s\n]*([\d\.]+,\d{2})", re.IGNORECASE)
+
+    for bloco in partes_texto:
+        if not bloco.strip():
+            continue
+            
+        match_reg = padrao_reg.search(bloco)
+        if not match_reg:
+            continue
+            
+        emp_id = match_reg.group(1).strip()
+        
+        match_cpf = padrao_cpf.search(bloco)
+        cpf = match_cpf.group(1).strip() if match_cpf else "N/D"
+        
+        match_base = padrao_base_irrf.search(bloco)
+        base_irrf = match_base.group(1).strip() if match_base else "0,00"
+        
+        # Tenta identificar o nome do funcionário nas primeiras linhas do bloco
+        linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
+        nome = "Funcionário"
+        for linha in linhas:
+            if "N. REG:" in linha:
+                # Remove a tag N. REG e o código para isolar o nome/CPF na linha
+                txt_limpo = re.sub(r"N\.\s*REG:\s*\d{4}", "", linha, flags=re.IGNORECASE).strip()
+                # Remove o CPF se estiver na mesma linha para sobrar o nome
+                txt_limpo = re.sub(r"\d{3}\.\d{3}\.\d{3}-\d{2}", "", txt_limpo).strip()
+                if len(txt_limpo) > 2:
+                    nome = txt_limpo
+                    break
+
+        if emp_id:
+            dados_funcionarios.append({
+                "Empresa": str(codigo_empresa).strip(),
+                "Código Empregado": emp_id,
+                "Funcionário": nome,
+                "CPF": cpf,
+                "Competência": competencia.strip(),
+                "Base IRRF": base_irrf,
+                "Código Rubrica": str(codigo_rubrica).strip()
+            })
+
+    return pd.DataFrame(dados_funcionarios)
+
 def gerar_linha_posicional(row):
     f_fixo = "10"
     f_emp = str(row['Código Empregado']).zfill(10)[:10]
@@ -164,7 +228,8 @@ sistema_cliente = st.selectbox(
     "Selecione o Sistema / Layout do Cliente:",
     [
         "Domínio Sistemas (Thomson Reuters)",
-        "Contmatic Phoenix"
+        "Contmatic Phoenix",
+        "Alterdata"
     ]
 )
 
@@ -194,7 +259,6 @@ if arquivos_pdf and st.button("Processar Extratos e Gerar Arquivos"):
                 if texto_extraido:
                     texto_completo += texto_extraido + "\n"
         
-        # Bloco de Depuração inserido para inspecionar o texto bruto na tela
         st.info(f"Depuração - Texto extraído do arquivo ({arquivo.name}):")
         st.code(texto_completo[:1200] if texto_completo else "Nenhum texto extraído deste PDF!")
             
@@ -202,6 +266,8 @@ if arquivos_pdf and st.button("Processar Extratos e Gerar Arquivos"):
             df_extrato = extrair_dados_extrato_dominio(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
         elif "Contmatic" in sistema_cliente:
             df_extrato = extrair_dados_extrato_contmatic(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+        elif "Alterdata" in sistema_cliente:
+            df_extrato = extrair_dados_extrato_alterdata(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
         else:
             df_extrato = pd.DataFrame()
             
