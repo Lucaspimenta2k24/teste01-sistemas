@@ -118,7 +118,6 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
         match_base = padrao_base_irrf.search(bloco)
         base_irrf = match_base.group(1).strip() if match_base else "0,00"
         
-        # Extrair o nome do funcionário (geralmente na linha seguinte ou próxima ao Cód)
         linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
         nome = "Funcionário"
         for i, linha in enumerate(linhas):
@@ -126,19 +125,17 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
                 nome = linha.replace("Nome:", "").strip()
                 break
             elif "Cód:" in linha and i + 1 < len(linhas):
-                # Algumas linhas de cabeçalho podem vir separadas, tentamos pegar o texto logo após
                 possivel_nome = linhas[i+1]
                 if "Função:" in possivel_nome or len(possivel_nome) > 3:
                     nome = possivel_nome.split("Função:")[0].strip()
                     break
 
-        # Como a Contmatic às vezes exibe resumos gerais no final, filtramos apenas os que têm código e base válidos
         if emp_id:
             dados_funcionarios.append({
                 "Empresa": str(codigo_empresa).strip(),
                 "Código Empregado": emp_id,
                 "Funcionário": nome,
-                "CPF": "N/D (Contmatic)", # Contmatic exibe em outros relatórios, mantido padrão estruturado
+                "CPF": "N/D (Contmatic)",
                 "Competência": competencia.strip(),
                 "Base IRRF": base_irrf,
                 "Código Rubrica": str(codigo_rubrica).strip()
@@ -174,14 +171,13 @@ def gerar_linha_posicional(row):
 st.title("Extrator de Base IRRF - Leiaute de Importação TXT")
 st.write("Selecione o sistema do cliente, configure os parâmetros e faça o upload dos extratos em PDF.")
 
-# Seletor de Modelo de Sistema atualizado com Contmatic
+# Seletor de Modelo de Sistema atualizado (Corrigido)
 sistema_cliente = st.selectbox(
     "Selecione o Sistema / Layout do Cliente:",
     [
         "Domínio Sistemas (Thomson Reuters)",
         "Contmatic Phoenix"
     ]
->
 )
 
 col1, col2, col3 = st.columns(3)
@@ -203,7 +199,6 @@ if arquivos_pdf and st.button("Processar Extratos e Gerar Arquivos"):
         with open(caminho_temp, "wb") as f:
             f.write(arquivo.getbuffer())
             
-        # Direciona para o extrator correto de acordo com o sistema selecionado
         if "Domínio" in sistema_cliente:
             df_extrato = extrair_dados_extrato_dominio(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
         elif "Contmatic" in sistema_cliente:
