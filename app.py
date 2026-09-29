@@ -255,7 +255,8 @@ def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica
     """
     Abordagem ajustada para o leiaute da Prosol:
     - Captura o código do empregado situado antes do nome (ex: '000000002-JOSE C').
-    - Captura rigorosamente o valor da base do IRRF associada a '0105 BASE DE CALCULO I.R.R.F.'.
+    - Isola estritamente a linha '0105 BASE DE CALCULO I.R.R.F.' e captura 
+      exatamente o valor da terceira coluna correspondente (2.329,50).
     """
     dados_funcionarios = []
     
@@ -276,8 +277,8 @@ def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica
     base_irrf = "0,00"
 
     padrao_codigo_nome = re.compile(r"^(\d+)-([A-ZÀ-Ú\s]+)", re.IGNORECASE)
-    # Garante que procura especificamente pela linha da base de cálculo do IRRF (ex: 0105 BASE DE CALCULO I.R.R.F.)
-    padrao_base_irrf_prosol = re.compile(r"(?:0105\s*)?BASE\s*DE\s*CALCULO\s*I\.R\.R\.F\.?", re.IGNORECASE)
+    # Identifica especificamente a linha da base de cálculo do IRRF (código 0105)
+    padrao_base_irrf_prosol = re.compile(r"0105\s+BASE\s+DE\s+CALCULO\s+I\.R\.R\.F\.?", re.IGNORECASE)
     padrao_valor = re.compile(r"([\d\.]+,\d{2})")
 
     i = 0
@@ -290,16 +291,18 @@ def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica
             base_irrf = "0,00"
         
         if padrao_base_irrf_prosol.search(linha):
-            # Procura os valores na própria linha ou nas linhas adjacentes da coluna correspondente
+            # Extrai todos os valores numéricos monetários presentes na linha da base IRRF
             valores_encontrados = padrao_valor.findall(linha)
             if not valores_encontrados and i + 1 < len(linhas):
                 valores_encontrados = padrao_valor.findall(linhas[i+1])
-            if not valores_encontrados and i + 2 < len(linhas):
-                valores_encontrados = padrao_valor.findall(linhas[i+2])
             
             if valores_encontrados:
-                # No leiaute Prosol, o último valor numérico da linha da base IRRF corresponde ao valor da base (ex: 2.329,50)
-                base_irrf = valores_encontrados[-1]
+                # No leiaute Prosol para a linha 0105, a estrutura típica exibe: [Referência (ex: 0,00)] e [Valor (ex: 2.329,50)]
+                # Selecionamos especificamente o índice que corresponde à terceira coluna (o valor monetário correto)
+                if len(valores_encontrados) >= 2:
+                    base_irrf = valores_encontrados[1]
+                else:
+                    base_irrf = valores_encontrados[0]
             
             if emp_id:
                 dados_funcionarios.append({
