@@ -87,10 +87,6 @@ def converter_competencia_aaamm(competencia_str):
     return comp_limpa.zfill(6)[:6]
 
 def extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, nome_sistema):
-    """
-    Fallback ultra-robusto: se o leiaute específico falhar, varre o PDF recolhendo
-    qualquer linha contendo códigos e valores monetários para evitar erros de tela vazia.
-    """
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
@@ -256,13 +252,15 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
         dados_funcionarios = []
         with pdfplumber.open(caminho_pdf) as pdf:
             texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
-        if not texto_completo.strip(): return pd.DataFrame()
+        if not texto_completo.strip(): 
+            return pd.DataFrame()
 
         linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
         emp_id, nome, base_irrf = None, "Funcionário", "0,00"
         
-        # Padrão estrito para identificar linhas de funcionário logo abaixo de "CÓD. NOME DO FUNCIONÁRIO"
-        padrao_funcionario_sci = re.compile(r"^(\d{1,5})\s+([A-ZÀ-Úa-zà-ú\s]{3,})$")
+        # Padrão estrito focado exclusivamente na linha logo abaixo de "CÓD. NOME DO FUNCIONÁRIO"
+        # Exemplo: "5 Ricardo Horista de Souza"
+        padrao_empregado_sci = re.compile(r"^(\d{1,5})\s+([A-ZÀ-Úa-zà-ú\s]{3,})$")
         padrao_rubrica_sci = re.compile(r"^(Salário|Horas|D\.S\.R\.|Adiant|Arred|I\.N\.S\.S|I\.R\.)", re.IGNORECASE)
         padrao_valor_monetario = re.compile(r"([\d\.]+,\d{2})")
 
@@ -270,32 +268,46 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
         while i < len(linhas):
             linha = linhas[i]
             
-            match_func = padrao_funcionario_sci.match(linha)
-            if match_func and not padrao_rubrica_sci.search(linha) and "TOTAL" not in linha.upper() and "Página" not in linha:
-                candidato_id = match_func.group(1).strip()
-                candidato_nome = match_func.group(2).strip()
-                
-                # Garante que o contexto anterior corresponda ao cabeçalho do empregado
-                if i > 0 and ("PROVENTOS" in linhas[i-1].upper() or "CÓD." in linhas[i-1].upper() or "SF" in linhas[i-1].upper()):
-                    emp_id = candidato_id
-                    nome = candidato_nome
+            # Detecta o cabeçalho exato ou a linha de funcionário validando o contexto imediato
+            if "CÓD. NOME DO FUNCIONÁRIO" in linha.upper() and i + 1 < len(linhas):
+                candidato_linha = linhas[i+1]
+                match_func = padrao_empregado_sci.match(candidato_linha)
+                if match_func and not padrao_rubrica_sci.search(candidato_linha):
+                    emp_id = match_func.group(1).strip()
+                    nome = match_func.group(2).strip()
 
-            if "IR" in linha.upper() or "BASE" in linha.upper() or "IMPOSTO" in linha.upper():
+            # Verificação alternativa caso o texto esteja quebrado em outra ordem na página
+            match_alt = padrao_empregado_sci.match(linha)
+            if match_alt and not padrao_rubrica_sci.search(linha) and "TOTAL" not in linha.upper():
+                if i > 0 and ("PROVENTOS" in linhas[i-1].upper() or "CÓD." in linhas[i-1].upper()):
+                    emp_id = match_alt.group(1).strip()
+                    nome = match_alt.group(2).strip()
+
+            # Captura o valor correspondente de IR / Base IR
+            if "IR ->" in linha.upper() or "TRIBUTÁVEL IR" in linha.upper() or "IR ->" in linha:
                 valores = padrao_valor_monetario.findall(linha)
-                if valores and emp_id:
+                if valores:
                     base_irrf = valores[-1]
-                    if not any(d.get('Código Empregado') == emp_id and d.get('Base IRRF') == base_irrf for d in dados_funcionarios):
-                        dados_funcionarios.append({
-                            "Empresa": str(codigo_empresa).strip(), 
-                            "Código Empregado": emp_id,
-                            "Funcionário": nome, 
-                            "CPF": "N/D (SCI)", 
-                            "Competência": competencia.strip(),
-                            "Base IRRF": base_irrf, 
-                            "Código Rubrica": str(codigo_rubrica).strip()
-                        })
+
             i += 1
-            
+
+        if emp_id:
+            # Garante captura da Base de IR se constar no resumo ou rodapé
+            match_ir_resumo = re.search(r"IR\s*->\s*([\d\.]+,\d{2})", texto_completo, re.IGNORECASE)
+            if match_ir_resumo:
+                base_irrf = match_ir_resumo.group(1).strip()
+
+            if not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
+                dados_funcionarios.append({
+                    "Empresa": str(codigo_empresa).strip(),
+                    "Código Empregado": emp_id,
+                    "Funcionário": nome,
+                    "CPF": "N/D (SCI)",
+                    "Competência": competencia.strip(),
+                    "Base IRRF": base_irrf,
+                    "Código Rubrica": str(codigo_rubrica).strip()
+                })
+
         df = pd.DataFrame(dados_funcionarios)
         if df.empty:
             return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "SCI")
