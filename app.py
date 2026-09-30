@@ -193,7 +193,6 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
 
     if not texto_completo.strip(): return pd.DataFrame()
 
-    # Dividir o texto por blocos de empregado usando o padrão de código (ex: 5 dígitos seguidos) e CPF
     partes_bloco = re.split(r"(?=\b\d{5}\b.*?(\d{3}\.\d{3}\.\d{3}-\d{2}))", texto_completo, flags=re.DOTALL)
     
     padrao_empregado_cpf = re.compile(r"\b(\d{5})\b.*?(\d{3}\.\d{3}\.\d{3}-\d{2})")
@@ -207,7 +206,6 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
         emp_id = match_emp_cpf.group(1).strip()
         cpf = match_emp_cpf.group(2).strip()
         
-        # Extrair nome da linha do cabeçalho do empregado
         linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
         nome = "Funcionário"
         for linha in linhas:
@@ -217,13 +215,11 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
                     nome = resto
                     break
 
-        # Procurar a base IRRF dentro do bloco do empregado
         base_irrf = "0,00"
         match_base = padrao_base_irrf_estrito.search(bloco)
         if match_base:
             base_irrf = match_base.group(1).strip()
 
-        # Evitar duplicatas garantindo que o empregado/CPF não foi inserido
         if emp_id and not any(d.get('CPF') == cpf and d.get('Código Empregado') == emp_id for d in dados_funcionarios):
             dados_funcionarios.append({
                 "Empresa": str(codigo_empresa).strip(),
@@ -238,6 +234,11 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+    """
+    Extrator ajustado para o leiaute da SCI:
+    - Captura o código do empregado e o nome exatos localizados na linha logo abaixo do cabeçalho (ex: '5 Ricardo Horista de Souza').
+    - Captura a base de IRRF correta ('IR -> [Valor]').
+    """
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
@@ -246,32 +247,56 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
 
     linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
     emp_id, nome, base_irrf = None, "Funcionário", "0,00"
-    padrao_codigo_nome = re.compile(r"^(\d+)\s+([A-ZÀ-Ú\s]+)", re.IGNORECASE)
+    
+    # Regex ajustado especificamente para capturar o código do empregado e o nome (ex: "5 Ricardo Horista de Souza")
+    padrao_codigo_nome_sci = re.compile(r"^(\d+)\s+([A-ZÀ-Úa-zà-ú\s]+)$")
     padrao_ir_sci = re.compile(r"IR\s*->\s*([\d\.]+,\d{2})", re.IGNORECASE)
 
-    for linha in linhas:
-        match_cod_nome = padrao_codigo_nome.search(linha)
-        if match_cod_nome and not "IR ->" in linha and not "TOTAL" in linha.upper() and not "Página" in linha:
-            if emp_id and base_irrf != "0,00":
-                dados_funcionarios.append({
-                    "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
-                    "Funcionário": nome, "CPF": "N/D (SCI)", "Competência": competencia.strip(),
-                    "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
-                })
-                base_irrf = "0,00"
-            emp_id, nome = match_cod_nome.group(1).strip(), match_cod_nome.group(2).strip()
-            continue
+    for i, linha in enumerate(linhas):
+        # Tenta identificar a linha que contém o código do funcionário seguido do nome (geralmente após a linha de colunas COD. DESCRIÇÃO...)
+        if ("CÓD. DESCRIÇÃO" in linha.upper() or "COD. NOME DO FUNCIONÁRIO" in linha.upper() or "DESCONTOS" in linha.upper()) and i + 1 < len(linhas):
+            proxima_linha = linhas[i+1]
+            match_cod_nome = padrao_codigo_nome_sci.match(proxima_linha)
+            if match_cod_nome:
+                emp_id = match_cod_nome.group(1).strip()
+                nome = match_cod_nome.group(2).strip()
+
+        # Fallback genérico caso o cabeçalho mude de posição
+        match_cod_nome_generico = re.compile(r"^(\d{1,4})\s+([A-ZÀ-Ú][A-ZÀ-Úa-zà-ú\s]{3,})$")
+        if not emp_id:
+            m_gen = match_cod_nome_generico.match(linha)
+            if m_gen and "IR ->" not in linha and "TOTAL" not in linha.upper() and "Página" not in linha:
+                emp_id = m_gen.group(1).strip()
+                nome = m_gen.group(2).strip()
 
         match_ir = padrao_ir_sci.search(linha)
         if match_ir:
             base_irrf = match_ir.group(1).strip()
             if emp_id:
                 dados_funcionarios.append({
-                    "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
-                    "Funcionário": nome, "CPF": "N/D (SCI)", "Competência": competencia.strip(),
-                    "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
+                    "Empresa": str(codigo_empresa).strip(), 
+                    "Código Empregado": emp_id,
+                    "Funcionário": nome, 
+                    "CPF": "N/D (SCI)", 
+                    "Competência": competencia.strip(),
+                    "Base IRRF": base_irrf, 
+                    "Código Rubrica": str(codigo_rubrica).strip()
                 })
+                # Reseta temporariamente para o próximo funcionário se houver
                 emp_id, base_irrf = None, "0,00"
+
+    # Caso não tenha capturado pelo loop estruturado mas encontrou dados básicos
+    if not dados_funcionarios and emp_id:
+        dados_funcionarios.append({
+            "Empresa": str(codigo_empresa).strip(), 
+            "Código Empregado": emp_id,
+            "Funcionário": nome, 
+            "CPF": "N/D (SCI)", 
+            "Competência": competencia.strip(),
+            "Base IRRF": base_irrf, 
+            "Código Rubrica": str(codigo_rubrica).strip()
+        })
+
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
@@ -353,11 +378,6 @@ def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubric
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_cucafresca(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
-    """
-    Extrator dedicado ao leiaute da Cuca Fresca:
-    - Captura o código do empregado e o nome logo no início do bloco do funcionário.
-    - Captura a base de IRRF na posição correta do rodapé (excluindo os totais de descontos).
-    """
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
