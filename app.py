@@ -346,8 +346,8 @@ def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubric
 def extrair_dados_extrato_cucafresca(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     """
     Extrator dedicado ao leiaute da Cuca Fresca:
-    - Captura o código do empregado e o nome logo no início do bloco do funcionário (ex: 00065 ALESSANDER JOSE...).
-    - Captura a base de IRRF logo abaixo/ao lado da descrição 'Base IRRF' no rodapé do funcionário.
+    - Captura o código do empregado e o nome logo no início do bloco do funcionário.
+    - Captura a base de IRRF na posição correta do rodapé (excluindo os totais de descontos).
     """
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
@@ -374,15 +374,25 @@ def extrair_dados_extrato_cucafresca(caminho_pdf, codigo_empresa="1", codigo_rub
         linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
         
         for i, linha in enumerate(linhas):
-            if "Base IRRF" in linha:
-                valores = re.findall(r"([\d\.]+,\d{2})", linha)
-                if valores:
-                    base_irrf = valores[-1]
-                elif i + 1 < len(linhas):
-                    valores_prox = re.findall(r"([\d\.]+,\d{2})", linhas[i+1])
-                    if valores_prox:
-                        base_irrf = valores_prox[-1]
-                break
+            if "Salário Base" in linha or "Base FGTS" in linha or "Base IRRF" in linha:
+                textos_para_analisar = [linha]
+                if i + 1 < len(linhas):
+                    textos_para_analisar.append(linhas[i+1])
+                if i + 2 < len(linhas):
+                    textos_para_analisar.append(linhas[i+2])
+                
+                todos_valores = []
+                for t in textos_para_analisar:
+                    encontrados = re.findall(r"([\d\.]+,\d{2})", t)
+                    if encontrados:
+                        todos_valores.extend(encontrados)
+                
+                if len(todos_valores) >= 5:
+                    base_irrf = todos_valores[4] if len(todos_valores) >= 5 else todos_valores[-3]
+                    break
+                elif todos_valores:
+                    base_irrf = todos_valores[-1]
+                    break
 
         if emp_id and not any(d.get('Código Empregado') == emp_id and d.get('CPF') == cpf for d in dados_funcionarios):
             dados_funcionarios.append({
@@ -449,7 +459,7 @@ if arquivos_pdf:
     with col_info1:
         st.metric(label="📄 Arquivos Selecionados", value=len(arquivos_pdf))
     with col_info2:
-        st.metric(label="⚙️️ Sistema Ativo", value=sistema_cliente.split()[0])
+        st.metric(label="⚙ Sistema Ativo", value=sistema_cliente.split()[0])
     with col_info3:
         st.metric(label="📅 Competência Alvo", value=competencia_input)
 
