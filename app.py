@@ -256,57 +256,47 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
             return pd.DataFrame()
 
         linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
-        emp_id, nome, base_irrf = None, "Funcionário", "0,00"
         
-        # Padrão estrito focado exclusivamente na linha logo abaixo de "CÓD. NOME DO FUNCIONÁRIO"
-        # Exemplo: "5 Ricardo Horista de Souza"
-        padrao_empregado_sci = re.compile(r"^(\d{1,5})\s+([A-ZÀ-Úa-zà-ú\s]{3,})$")
-        padrao_rubrica_sci = re.compile(r"^(Salário|Horas|D\.S\.R\.|Adiant|Arred|I\.N\.S\.S|I\.R\.)", re.IGNORECASE)
-        padrao_valor_monetario = re.compile(r"([\d\.]+,\d{2})")
-
         i = 0
         while i < len(linhas):
             linha = linhas[i]
             
-            # Detecta o cabeçalho exato ou a linha de funcionário validando o contexto imediato
+            # Varre rigorosamente apenas quando encontra o cabeçalho oficial da SCI
             if "CÓD. NOME DO FUNCIONÁRIO" in linha.upper() and i + 1 < len(linhas):
-                candidato_linha = linhas[i+1]
-                match_func = padrao_empregado_sci.match(candidato_linha)
-                if match_func and not padrao_rubrica_sci.search(candidato_linha):
+                i += 1
+                linha_func = linhas[i]
+                
+                # Padrão estrito para capturar o código do funcionário e o nome logo abaixo do cabeçalho
+                # Exemplo: "5 Ricardo Horista de Souza"
+                match_func = re.match(r"^(\d{1,5})\s+([A-ZÀ-Úa-zà-ú\s]+)", linha_func)
+                if match_func:
                     emp_id = match_func.group(1).strip()
-                    nome = match_func.group(2).strip()
-
-            # Verificação alternativa caso o texto esteja quebrado em outra ordem na página
-            match_alt = padrao_empregado_sci.match(linha)
-            if match_alt and not padrao_rubrica_sci.search(linha) and "TOTAL" not in linha.upper():
-                if i > 0 and ("PROVENTOS" in linhas[i-1].upper() or "CÓD." in linhas[i-1].upper()):
-                    emp_id = match_alt.group(1).strip()
-                    nome = match_alt.group(2).strip()
-
-            # Captura o valor correspondente de IR / Base IR
-            if "IR ->" in linha.upper() or "TRIBUTÁVEL IR" in linha.upper() or "IR ->" in linha:
-                valores = padrao_valor_monetario.findall(linha)
-                if valores:
-                    base_irrf = valores[-1]
-
+                    nome_func = match_func.group(2).strip()
+                    # Remove sujeiras ou códigos adicionais no final da linha do nome
+                    nome_func = re.sub(r"\s+\d+.*$", "", nome_func).strip()
+                    
+                    # Procura o campo "IR ->" estritamente dentro do bloco deste funcionário
+                    base_irrf = "0,00"
+                    j = i
+                    while j < len(linhas) and "CÓD. NOME DO FUNCIONÁRIO" not in linhas[j].upper():
+                        if "IR ->" in linhas[j].upper():
+                            val_match = re.findall(r"([\d\.]+,\d{2})", linhas[j])
+                            if val_match:
+                                base_irrf = val_match[-1]
+                                break
+                        j += 1
+                        
+                    if not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
+                        dados_funcionarios.append({
+                            "Empresa": str(codigo_empresa).strip(),
+                            "Código Empregado": emp_id,
+                            "Funcionário": nome_func[:40],
+                            "CPF": "N/D (SCI)",
+                            "Competência": competencia.strip(),
+                            "Base IRRF": base_irrf,
+                            "Código Rubrica": str(codigo_rubrica).strip()
+                        })
             i += 1
-
-        if emp_id:
-            # Garante captura da Base de IR se constar no resumo ou rodapé
-            match_ir_resumo = re.search(r"IR\s*->\s*([\d\.]+,\d{2})", texto_completo, re.IGNORECASE)
-            if match_ir_resumo:
-                base_irrf = match_ir_resumo.group(1).strip()
-
-            if not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
-                dados_funcionarios.append({
-                    "Empresa": str(codigo_empresa).strip(),
-                    "Código Empregado": emp_id,
-                    "Funcionário": nome,
-                    "CPF": "N/D (SCI)",
-                    "Competência": competencia.strip(),
-                    "Base IRRF": base_irrf,
-                    "Código Rubrica": str(codigo_rubrica).strip()
-                })
 
         df = pd.DataFrame(dados_funcionarios)
         if df.empty:
