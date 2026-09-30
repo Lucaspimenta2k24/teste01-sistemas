@@ -15,26 +15,19 @@ st.set_page_config(
 # --- Estilização CSS: Fundo Escuro + Textos em Verde Esmeralda Neon ---
 st.markdown("""
     <style>
-    /* Fundo geral da aplicação - Escuro Profundo */
     .stApp {
         background-color: #090d16;
         color: #00ffcc !important;
     }
-    
-    /* Forçar todas as palavras, títulos, subtítulos e textos em Verde Neon */
     h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown, .stText {
         color: #00ffcc !important;
         font-family: 'Inter', sans-serif;
     }
-    
-    /* Inputs, textos digitados e selects com texto verde */
     input, select, textarea {
         color: #00ffcc !important;
         background-color: #111827 !important;
         border-color: #00ffcc !important;
     }
-
-    /* Botões modernos com gradiente em Verde Esmeralda Neon */
     .stButton>button {
         border-radius: 12px;
         font-weight: 700;
@@ -51,8 +44,6 @@ st.markdown("""
         box-shadow: 0 6px 20px rgba(0, 255, 204, 0.6);
         transform: translateY(-2px);
     }
-    
-    /* Cartões / Containers personalizados com borda neon suave */
     .custom-card {
         background-color: #111827;
         padding: 1.5rem;
@@ -61,8 +52,6 @@ st.markdown("""
         border: 1px solid rgba(0, 255, 204, 0.3);
         margin-bottom: 1rem;
     }
-    
-    /* Ajustes da barra lateral escura */
     [data-testid="stSidebar"] {
         background-color: #0d1322;
         color: #00ffcc !important;
@@ -71,14 +60,10 @@ st.markdown("""
     [data-testid="stSidebar"] * {
         color: #00ffcc !important;
     }
-    
-    /* Métricas e caixas de destaque */
     [data-testid="stMetricValue"] {
         color: #00ffcc !important;
         text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
     }
-    
-    /* File Uploader customizado */
     [data-testid="stFileUploader"] {
         background-color: #111827;
         border: 2px dashed rgba(0, 255, 204, 0.4);
@@ -89,7 +74,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def converter_competencia_aaamm(competencia_str):
-    """Converte MM/AAAA para AAAAMM conforme o leiaute."""
     comp_limpa = re.sub(r'\D', '', competencia_str)
     if '/' in competencia_str:
         partes = competencia_str.split('/')
@@ -106,14 +90,11 @@ def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubric
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
-
     if not texto_completo.strip(): return pd.DataFrame()
-
     partes_texto = re.split(r"(?=Empr\.?:?\s*\d+)", texto_completo, flags=re.IGNORECASE)
     padrao_emp = re.compile(r"Empr\.?:?\s*(\d+)", re.IGNORECASE)
     padrao_cpf = re.compile(r"(\d{3}\.\d{3}\.\d{3}-\d{2})")
     padrao_base_irrf = re.compile(r"(?:Base\s*(?:de\s*Cálculo\s*)?(?:do\s*)?IRRF|Base\s*Calc\.?\s*IRRF|IRRF\s*Base)[:\s\n]*([\d\.]+,\d{2})", re.IGNORECASE)
-
     for bloco in partes_texto:
         if not bloco.strip(): continue
         match_emp, match_cpf = padrao_emp.search(bloco), padrao_cpf.search(bloco)
@@ -121,7 +102,6 @@ def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubric
         emp_id, cpf = match_emp.group(1).strip(), match_cpf.group(1).strip()
         match_base = padrao_base_irrf.search(bloco)
         base_irrf = match_base.group(1).strip() if match_base else "0,00"
-        
         linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
         nome = "Funcionário"
         for linha in linhas:
@@ -130,16 +110,11 @@ def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubric
                 if len(txt_limpo) > 2:
                     nome = txt_limpo
                     break
-
         if not any(d.get('CPF') == cpf and d.get('Código Empregado') == emp_id for d in dados_funcionarios):
             dados_funcionarios.append({
-                "Empresa": str(codigo_empresa).strip(),
-                "Código Empregado": emp_id,
-                "Funcionário": nome,
-                "CPF": cpf,
-                "Competência": competencia.strip(),
-                "Base IRRF": base_irrf,
-                "Código Rubrica": str(codigo_rubrica).strip()
+                "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
+                "Funcionário": nome, "CPF": cpf, "Competência": competencia.strip(),
+                "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
             })
     return pd.DataFrame(dados_funcionarios)
 
@@ -147,13 +122,10 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
-
     if not texto_completo.strip(): return pd.DataFrame()
-
     partes_texto = re.split(r"(?=Cód:\s*\d+)", texto_completo, flags=re.IGNORECASE)
     padrao_cod = re.compile(r"Cód:\s*(\d+)", re.IGNORECASE)
     padrao_base_irrf = re.compile(r"Base\s*I\.R\.R\.F\.?:?[\s\n]*([\d\.]+,\d{2})", re.IGNORECASE)
-
     for bloco in partes_texto:
         if not bloco.strip(): continue
         match_cod = padrao_cod.search(bloco)
@@ -161,7 +133,6 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
         emp_id = match_cod.group(1).strip()
         match_base = padrao_base_irrf.search(bloco)
         base_irrf = match_base.group(1).strip() if match_base else "0,00"
-        
         linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
         nome = "Funcionário"
         for i, linha in enumerate(linhas):
@@ -173,16 +144,11 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
                 if "Função:" in possivel_nome or len(possivel_nome) > 3:
                     nome = possivel_nome.split("Função:")[0].strip()
                     break
-
         if emp_id:
             dados_funcionarios.append({
-                "Empresa": str(codigo_empresa).strip(),
-                "Código Empregado": emp_id,
-                "Funcionário": nome,
-                "CPF": "N/D (Contmatic)",
-                "Competência": competencia.strip(),
-                "Base IRRF": base_irrf,
-                "Código Rubrica": str(codigo_rubrica).strip()
+                "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
+                "Funcionário": nome, "CPF": "N/D (Contmatic)", "Competência": competencia.strip(),
+                "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
             })
     return pd.DataFrame(dados_funcionarios)
 
@@ -190,22 +156,16 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
-
     if not texto_completo.strip(): return pd.DataFrame()
-
     partes_bloco = re.split(r"(?=\b\d{5}\b.*?(\d{3}\.\d{3}\.\d{3}-\d{2}))", texto_completo, flags=re.DOTALL)
-    
     padrao_empregado_cpf = re.compile(r"\b(\d{5})\b.*?(\d{3}\.\d{3}\.\d{3}-\d{2})")
     padrao_base_irrf_estrito = re.compile(r"Base\s*IRRF\s*[:\s]*([\d\.]+,\d{2})", re.IGNORECASE)
-
     for bloco in partes_bloco:
         if not bloco.strip(): continue
         match_emp_cpf = padrao_empregado_cpf.search(bloco)
         if not match_emp_cpf: continue
-        
         emp_id = match_emp_cpf.group(1).strip()
         cpf = match_emp_cpf.group(2).strip()
-        
         linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
         nome = "Funcionário"
         for linha in linhas:
@@ -214,88 +174,59 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
                 if len(resto) > 2:
                     nome = resto
                     break
-
         base_irrf = "0,00"
         match_base = padrao_base_irrf_estrito.search(bloco)
         if match_base:
             base_irrf = match_base.group(1).strip()
-
         if emp_id and not any(d.get('CPF') == cpf and d.get('Código Empregado') == emp_id for d in dados_funcionarios):
             dados_funcionarios.append({
-                "Empresa": str(codigo_empresa).strip(),
-                "Código Empregado": emp_id,
-                "Funcionário": nome,
-                "CPF": cpf,
-                "Competência": competencia.strip(),
-                "Base IRRF": base_irrf,
-                "Código Rubrica": str(codigo_rubrica).strip()
+                "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
+                "Funcionário": nome, "CPF": cpf, "Competência": competencia.strip(),
+                "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
             })
-
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
-    """
-    Extrator ajustado para o leiaute da SCI:
-    - Captura o código do empregado e o nome exatos localizados na linha logo abaixo do cabeçalho (ex: '5 Ricardo Horista de Souza').
-    - Captura a base de IRRF correta ('IR -> [Valor]').
-    """
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
-
     if not texto_completo.strip(): return pd.DataFrame()
 
     linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
     emp_id, nome, base_irrf = None, "Funcionário", "0,00"
-    
-    # Regex ajustado especificamente para capturar o código do empregado e o nome (ex: "5 Ricardo Horista de Souza")
-    padrao_codigo_nome_sci = re.compile(r"^(\d+)\s+([A-ZÀ-Úa-zà-ú\s]+)$")
-    padrao_ir_sci = re.compile(r"IR\s*->\s*([\d\.]+,\d{2})", re.IGNORECASE)
+    padrao_codigo_nome = re.compile(r"^(\d{1,5})\s+([A-ZÀ-Úa-zà-ú\s]{3,})$")
+    padrao_valor_monetario = re.compile(r"([\d\.]+,\d{2})")
 
-    for i, linha in enumerate(linhas):
-        # Tenta identificar a linha que contém o código do funcionário seguido do nome (geralmente após a linha de colunas COD. DESCRIÇÃO...)
-        if ("CÓD. DESCRIÇÃO" in linha.upper() or "COD. NOME DO FUNCIONÁRIO" in linha.upper() or "DESCONTOS" in linha.upper()) and i + 1 < len(linhas):
-            proxima_linha = linhas[i+1]
-            match_cod_nome = padrao_codigo_nome_sci.match(proxima_linha)
-            if match_cod_nome:
-                emp_id = match_cod_nome.group(1).strip()
-                nome = match_cod_nome.group(2).strip()
+    i = 0
+    while i < len(linhas):
+        linha = linhas[i]
+        match_cod_nome = padrao_codigo_nome.match(linha)
+        if match_cod_nome and "TOTAL" not in linha.upper() and "Página" not in linha and "IR" not in linha.upper():
+            candidato_id = match_cod_nome.group(1).strip()
+            candidato_nome = match_cod_nome.group(2).strip()
+            if len(candidato_id) <= 5:
+                emp_id = candidato_id
+                nome = candidato_nome
 
-        # Fallback genérico caso o cabeçalho mude de posição
-        match_cod_nome_generico = re.compile(r"^(\d{1,4})\s+([A-ZÀ-Ú][A-ZÀ-Úa-zà-ú\s]{3,})$")
-        if not emp_id:
-            m_gen = match_cod_nome_generico.match(linha)
-            if m_gen and "IR ->" not in linha and "TOTAL" not in linha.upper() and "Página" not in linha:
-                emp_id = m_gen.group(1).strip()
-                nome = m_gen.group(2).strip()
+        if "IR" in linha.upper() or "BASE" in linha.upper() or "IMPOSTO" in linha.upper():
+            valores = padrao_valor_monetario.findall(linha)
+            if valores:
+                base_irrf = valores[-1]
+                if emp_id:
+                    if not any(d.get('Código Empregado') == emp_id and d.get('Base IRRF') == base_irrf for d in dados_funcionarios):
+                        dados_funcionarios.append({
+                            "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
+                            "Funcionário": nome, "CPF": "N/D (SCI)", "Competência": competencia.strip(),
+                            "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
+                        })
+        i += 1
 
-        match_ir = padrao_ir_sci.search(linha)
-        if match_ir:
-            base_irrf = match_ir.group(1).strip()
-            if emp_id:
-                dados_funcionarios.append({
-                    "Empresa": str(codigo_empresa).strip(), 
-                    "Código Empregado": emp_id,
-                    "Funcionário": nome, 
-                    "CPF": "N/D (SCI)", 
-                    "Competência": competencia.strip(),
-                    "Base IRRF": base_irrf, 
-                    "Código Rubrica": str(codigo_rubrica).strip()
-                })
-                # Reseta temporariamente para o próximo funcionário se houver
-                emp_id, base_irrf = None, "0,00"
-
-    # Caso não tenha capturado pelo loop estruturado mas encontrou dados básicos
-    if not dados_funcionarios and emp_id:
-        dados_funcionarios.append({
-            "Empresa": str(codigo_empresa).strip(), 
-            "Código Empregado": emp_id,
-            "Funcionário": nome, 
-            "CPF": "N/D (SCI)", 
-            "Competência": competencia.strip(),
-            "Base IRRF": base_irrf, 
-            "Código Rubrica": str(codigo_rubrica).strip()
-        })
+    if not dados_funcionarios:
+        for linha in linhas:
+            if "Total" in linha or "Resumo" in linha: continue
+            valores = padrao_valor_monetario.findall(linha)
+            if valores and emp_id:
+                base_irrf = valores[-1]
 
     return pd.DataFrame(dados_funcionarios)
 
@@ -303,15 +234,12 @@ def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
-
     if not texto_completo.strip(): return pd.DataFrame()
-
     linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
     emp_id, nome, base_irrf = None, "Funcionário", "0,00"
     padrao_codigo_nome = re.compile(r"^(\d+)-([A-ZÀ-Ú\s]+)", re.IGNORECASE)
     padrao_base_irrf_prosol = re.compile(r"0105\s+BASE\s+DE\s+CALCULO\s+I\.R\.R\.F\.?", re.IGNORECASE)
     padrao_valor = re.compile(r"([\d\.]+,\d{2})")
-
     i = 0
     while i < len(linhas):
         linha = linhas[i]
@@ -320,24 +248,17 @@ def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica
             emp_id = match_cod_nome.group(1).strip()
             nome = match_cod_nome.group(2).strip()
             base_irrf = "0,00"
-        
         if padrao_base_irrf_prosol.search(linha):
             valores_encontrados = padrao_valor.findall(linha)
             if not valores_encontrados and i + 1 < len(linhas):
                 valores_encontrados = padrao_valor.findall(linhas[i+1])
-            
             if valores_encontrados:
                 base_irrf = valores_encontrados[1] if len(valores_encontrados) >= 2 else valores_encontrados[0]
-            
             if emp_id:
                 dados_funcionarios.append({
-                    "Empresa": str(codigo_empresa).strip(),
-                    "Código Empregado": emp_id,
-                    "Funcionário": nome,
-                    "CPF": "N/D (Prosol)",
-                    "Competência": competencia.strip(),
-                    "Base IRRF": base_irrf,
-                    "Código Rubrica": str(codigo_rubrica).strip()
+                    "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
+                    "Funcionário": nome, "CPF": "N/D (Prosol)", "Competência": competencia.strip(),
+                    "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
                 })
         i += 1
     return pd.DataFrame(dados_funcionarios)
@@ -346,94 +267,65 @@ def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubric
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
-
     if not texto_completo.strip(): return pd.DataFrame()
-
     partes_texto = re.split(r"(?=Func:\s*\n?\d+)", texto_completo, flags=re.IGNORECASE)
     padrao_func = re.compile(r"Func:\s*\n?(\d+)\s+([A-ZÀ-Ú\s]+)", re.IGNORECASE)
     padrao_base_impostos_irrf = re.compile(r"Base\s+Impostos.*?IRRF\s+([\d\.]+,\d{2})", re.IGNORECASE | re.DOTALL)
-
     for bloco in partes_texto:
         if not bloco.strip(): continue
         match_func = padrao_func.search(bloco)
         if not match_func: continue
-        
         emp_id = match_func.group(1).strip()
         nome = match_func.group(2).strip()
-        
         match_base = padrao_base_impostos_irrf.search(bloco)
         base_irrf = match_base.group(1).strip() if match_base else "0,00"
-        
         if emp_id and not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
             dados_funcionarios.append({
-                "Empresa": str(codigo_empresa).strip(),
-                "Código Empregado": emp_id,
-                "Funcionário": nome,
-                "CPF": "N/D (Questor)",
-                "Competência": competencia.strip(),
-                "Base IRRF": base_irrf,
-                "Código Rubrica": str(codigo_rubrica).strip()
+                "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
+                "Funcionário": nome, "CPF": "N/D (Questor)", "Competência": competencia.strip(),
+                "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
             })
-            
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_cucafresca(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
-
     if not texto_completo.strip(): return pd.DataFrame()
-
     partes_texto = re.split(r"(?=\b\d+\s+[A-ZÀ-Ú\s]+\s+\d{4}-\d{2})", texto_completo, flags=re.IGNORECASE)
     padrao_emp_nome = re.compile(r"(\d+)\s+([A-ZÀ-Ú\s]+?)\s+(\d{4}-\d{2})", re.IGNORECASE)
     padrao_cpf = re.compile(r"CPF:\s*(\d{3}\.\d{3}\.\d{3}-\d{2})", re.IGNORECASE)
-
     for bloco in partes_texto:
         if not bloco.strip(): continue
         match_emp_nome = padrao_emp_nome.search(bloco)
         if not match_emp_nome: continue
-        
         emp_id = match_emp_nome.group(1).strip()
         nome = match_emp_nome.group(2).strip()
-        
         match_cpf = padrao_cpf.search(bloco)
         cpf = match_cpf.group(1).strip() if match_cpf else "N/D (Cuca Fresca)"
-
         base_irrf = "0,00"
         linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
-        
         for i, linha in enumerate(linhas):
             if "Salário Base" in linha or "Base FGTS" in linha or "Base IRRF" in linha:
                 textos_para_analisar = [linha]
-                if i + 1 < len(linhas):
-                    textos_para_analisar.append(linhas[i+1])
-                if i + 2 < len(linhas):
-                    textos_para_analisar.append(linhas[i+2])
-                
+                if i + 1 < len(linhas): textos_para_analisar.append(linhas[i+1])
+                if i + 2 < len(linhas): textos_para_analisar.append(linhas[i+2])
                 todos_valores = []
                 for t in textos_para_analisar:
                     encontrados = re.findall(r"([\d\.]+,\d{2})", t)
-                    if encontrados:
-                        todos_valores.extend(encontrados)
-                
+                    if encontrados: todos_valores.extend(encontrados)
                 if len(todos_valores) >= 5:
                     base_irrf = todos_valores[4] if len(todos_valores) >= 5 else todos_valores[-3]
                     break
                 elif todos_valores:
                     base_irrf = todos_valores[-1]
                     break
-
         if emp_id and not any(d.get('Código Empregado') == emp_id and d.get('CPF') == cpf for d in dados_funcionarios):
             dados_funcionarios.append({
-                "Empresa": str(codigo_empresa).strip(),
-                "Código Empregado": emp_id,
-                "Funcionário": nome,
-                "CPF": cpf,
-                "Competência": competencia.strip(),
-                "Base IRRF": base_irrf,
-                "Código Rubrica": str(codigo_rubrica).strip()
+                "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
+                "Funcionário": nome, "CPF": cpf, "Competência": competencia.strip(),
+                "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
             })
-
     return pd.DataFrame(dados_funcionarios)
 
 def gerar_linha_posicional(row):
@@ -447,54 +339,29 @@ def gerar_linha_posicional(row):
     f_empresa = str(row['Empresa']).zfill(10)[:10]
     return f"{f_fixo}{f_emp}{f_comp}{f_rubrica}{f_proc}{f_valor}{f_empresa}\n"
 
-# --- Layout da Interface (Sidebar) ---
+# --- Sidebar ---
 with st.sidebar:
     st.markdown("### ⚙️ Painel de Controle")
-    st.markdown("Configure os parâmetros de exportação dos dados contábeis.")
-    
     sistema_cliente = st.selectbox(
         "🏢 Sistema / Leiaute:",
-        [
-            "Questor",
-            "Domínio (Thomson Reuters)",
-            "Contmatic Phoenix",
-            "Alterdata",
-            "SCI Contábil",
-            "Prosol",
-            "Cuca Fresca"
-        ]
+        ["Questor", "Domínio (Thomson Reuters)", "Contmatic Phoenix", "Alterdata", "SCI Contábil", "Prosol", "Cuca Fresca"]
     )
-    
     st.markdown("---")
     codigo_empresa_input = st.text_input("🔢 Código da Empresa:", value="1")
     codigo_rubrica = st.text_input("🏷️ Código da Rubrica (TXT):", value="2000")
     competencia_input = st.text_input("📅 Competência (MM/AAAA):", value="09/2026")
-    
-    st.markdown("---")
-    st.markdown("💡 *Dica: Você pode enviar múltiplos PDFs de uma só vez.*")
 
-# --- Layout Principal (Header & Conteúdo) ---
+# --- Interface Principal ---
 st.title("⚡ Extrator Inteligente de Base IRRF")
 st.markdown("Transforme extratos de folha de pagamento em **layouts TXT posicionais e planilhas de conferência** com inteligência e precisão em segundos.")
 
-# Cartão Principal de Upload
 st.markdown('<div class="custom-card">', unsafe_allow_html=True)
 st.markdown("### 📂 Upload de Extratos (PDF)")
 arquivos_pdf = st.file_uploader("Arraste ou selecione os arquivos PDF aqui", type=["pdf"], accept_multiple_files=True, label_visibility="collapsed")
 st.markdown('</div>', unsafe_allow_html=True)
 
-if arquivos_pdf:
-    col_info1, col_info2, col_info3 = st.columns(3)
-    with col_info1:
-        st.metric(label="📄 Arquivos Selecionados", value=len(arquivos_pdf))
-    with col_info2:
-        st.metric(label="⚙ Sistema Ativo", value=sistema_cliente.split()[0])
-    with col_info3:
-        st.metric(label="📅 Competência Alvo", value=competencia_input)
-
 if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
     todos_dados = []
-    
     with st.spinner("Processando arquivos com inteligência de leiaute... Por favor, aguarde ⏳"):
         for arquivo in arquivos_pdf:
             caminho_temp = os.path.join("temp", arquivo.name)
@@ -522,18 +389,14 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
             if not df_extrato.empty:
                 df_extrato["Arquivo Origem"] = arquivo.name
                 todos_dados.append(df_extrato)
-            
             os.remove(caminho_temp)
             
     if todos_dados:
         df_final = pd.concat(todos_dados, ignore_index=True)
-        
         if df_final.empty:
             st.warning("⚠️ Nenhum dado foi extraído. Verifique se o PDF corresponde ao leiaute selecionado.")
         else:
             st.success(f"🎉 Processamento concluído com sucesso! {len(df_final)} registros mapeados.")
-            
-            # Exibição Visual Moderna dos Dados
             st.markdown("### 📊 Prévia dos Dados Extraídos")
             st.dataframe(df_final, use_container_width=True)
             
@@ -547,23 +410,11 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
 
             st.markdown("### 📥 Central de Downloads")
             col_dl1, col_dl2 = st.columns(2)
-            
             with col_dl1:
                 with open(output_csv, "rb") as f:
-                    st.download_button(
-                        label="📥 Baixar Planilha de Conferência (CSV)",
-                        data=f,
-                        file_name=output_csv,
-                        mime="text/csv"
-                    )
-                    
+                    st.download_button("📥 Baixar Planilha de Conferência (CSV)", data=f, file_name=output_csv, mime="text/csv")
             with col_dl2:
                 with open(output_txt, "r", encoding="utf-8") as f:
-                    st.download_button(
-                        label="📄 Baixar TXT Posicional (Leiaute)",
-                        data=f,
-                        file_name=output_txt,
-                        mime="text/plain"
-                    )
+                    st.download_button("📄 Baixar TXT Posicional (Leiaute)", data=f, file_name=output_txt, mime="text/plain")
     else:
-        st.warning("⚠️ Nenhum dado válido foi encontrado nos arquivos enviados.")
+        st.warning("⚠️ Nenhum dado válido foi encontrado nos arquivos enviados. Certifique-se de que selecionou o sistema correto na barra lateral.")
