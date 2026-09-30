@@ -261,24 +261,18 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
         while i < len(linhas):
             linha = linhas[i]
             
-            # Varre rigorosamente apenas quando encontra o cabeçalho oficial da SCI
-            if "CÓD. NOME DO FUNCIONÁRIO" in linha.upper() and i + 1 < len(linhas):
-                i += 1
-                linha_func = linhas[i]
-                
-                # Padrão estrito para capturar o código do funcionário e o nome logo abaixo do cabeçalho
-                # Exemplo: "5 Ricardo Horista de Souza"
-                match_func = re.match(r"^(\d{1,5})\s+([A-ZÀ-Úa-zà-ú\s]+)", linha_func)
+            # BLINDAGEM SCI: Captura estritamente a linha que possui "Admitido em"
+            if "ADMITIDO EM" in linha.upper():
+                match_func = re.search(r"^(\d+)\s+(.+?)\s+Admitido em", linha, re.IGNORECASE)
                 if match_func:
                     emp_id = match_func.group(1).strip()
                     nome_func = match_func.group(2).strip()
-                    # Remove sujeiras ou códigos adicionais no final da linha do nome
-                    nome_func = re.sub(r"\s+\d+.*$", "", nome_func).strip()
+                    nome_func = re.sub(r"\s+\d+\s*\d*$", "", nome_func).strip()
                     
-                    # Procura o campo "IR ->" estritamente dentro do bloco deste funcionário
+                    # Procura o valor exato do campo "IR ->" nas linhas pertencentes a este funcionário
                     base_irrf = "0,00"
                     j = i
-                    while j < len(linhas) and "CÓD. NOME DO FUNCIONÁRIO" not in linhas[j].upper():
+                    while j < len(linhas) and (j == i or "ADMITIDO EM" not in linhas[j].upper()):
                         if "IR ->" in linhas[j].upper():
                             val_match = re.findall(r"([\d\.]+,\d{2})", linhas[j])
                             if val_match:
