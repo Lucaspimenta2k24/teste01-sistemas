@@ -193,39 +193,48 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
 
     if not texto_completo.strip(): return pd.DataFrame()
 
-    linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
-    emp_id, nome, cpf, base_irrf = None, "Funcionário", "N/D", "0,00"
+    # Dividir o texto por blocos de empregado usando o padrão de código (ex: 5 dígitos seguidos) e CPF
+    partes_bloco = re.split(r"(?=\b\d{5}\b.*?(\d{3}\.\d{3}\.\d{3}-\d{2}))", texto_completo, flags=re.DOTALL)
+    
     padrao_empregado_cpf = re.compile(r"\b(\d{5})\b.*?(\d{3}\.\d{3}\.\d{3}-\d{2})")
-    padrao_cpf_isolado = re.compile(r"(\d{3}\.\d{3}\.\d{3}-\d{2})")
     padrao_base_irrf_estrito = re.compile(r"Base\s*IRRF\s*[:\s]*([\d\.]+,\d{2})", re.IGNORECASE)
 
-    for linha in linhas:
-        match_emp_cpf = padrao_empregado_cpf.search(linha)
-        if match_emp_cpf:
-            if emp_id and base_irrf != "0,00":
-                dados_funcionarios.append({
-                    "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
-                    "Funcionário": nome, "CPF": cpf, "Competência": competencia.strip(),
-                    "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
-                })
-                base_irrf = "0,00"
-            emp_id, cpf = match_emp_cpf.group(1).strip(), match_emp_cpf.group(2).strip()
-            resto = padrao_empregado_cpf.sub("", linha).strip()
-            if len(resto) > 2: nome = resto
-            continue
+    for bloco in partes_bloco:
+        if not bloco.strip(): continue
+        match_emp_cpf = padrao_empregado_cpf.search(bloco)
+        if not match_emp_cpf: continue
+        
+        emp_id = match_emp_cpf.group(1).strip()
+        cpf = match_emp_cpf.group(2).strip()
+        
+        # Extrair nome da linha do cabeçalho do empregado
+        linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
+        nome = "Funcionário"
+        for linha in linhas:
+            if emp_id in linha and cpf in linha:
+                resto = linha.replace(emp_id, "").replace(cpf, "").strip()
+                if len(resto) > 2:
+                    nome = resto
+                    break
 
-        match_cpf_iso = padrao_cpf_isolado.search(linha)
-        if match_cpf_iso and cpf == "N/D": cpf = match_cpf_iso.group(1).strip()
-
-        match_base = padrao_base_irrf_estrito.search(linha)
+        # Procurar a base IRRF dentro do bloco do empregado
+        base_irrf = "0,00"
+        match_base = padrao_base_irrf_estrito.search(bloco)
         if match_base:
             base_irrf = match_base.group(1).strip()
-            if emp_id and not any(d.get('CPF') == cpf and d.get('Código Empregado') == emp_id for d in dados_funcionarios):
-                dados_funcionarios.append({
-                    "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
-                    "Funcionário": nome, "CPF": cpf, "Competência": competencia.strip(),
-                    "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
-                })
+
+        # Evitar duplicatas garantindo que o empregado/CPF não foi inserido
+        if emp_id and not any(d.get('CPF') == cpf and d.get('Código Empregado') == emp_id for d in dados_funcionarios):
+            dados_funcionarios.append({
+                "Empresa": str(codigo_empresa).strip(),
+                "Código Empregado": emp_id,
+                "Funcionário": nome,
+                "CPF": cpf,
+                "Competência": competencia.strip(),
+                "Base IRRF": base_irrf,
+                "Código Rubrica": str(codigo_rubrica).strip()
+            })
+
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
