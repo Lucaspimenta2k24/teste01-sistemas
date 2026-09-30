@@ -6,7 +6,7 @@ import streamlit as st
 
 # --- Configuração Inicial da Página ---
 st.set_page_config(
-    page_title="Extrator Inteligente de Base do IRRF",
+    page_title="Extrator Inteligente de IRRF",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -266,11 +266,6 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
-    """
-    Abordagem ajustada e validada para o leiaute da Prosol:
-    - Captura o código do empregado e isola estritamente a linha '0105 BASE DE CALCULO I.R.R.F.'
-    - Pega com precisão o valor monetário correto da terceira coluna (ex: 2.329,50)[cite: 7].
-    """
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
@@ -313,6 +308,48 @@ def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica
         i += 1
     return pd.DataFrame(dados_funcionarios)
 
+def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+    """
+    Extrator dedicado ao leiaute do sistema Questor:
+    - O código do empregado vem após o campo 'Func:' (ex: 'Func:\n1 NICILAINE...')
+    - A base de IRRF é obtida da linha 'IRRF' contida no quadro de Base Impostos.
+    """
+    dados_funcionarios = []
+    with pdfplumber.open(caminho_pdf) as pdf:
+        texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
+
+    if not texto_completo.strip(): return pd.DataFrame()
+
+    # Divide o texto por blocos iniciados por "Func:"
+    partes_texto = re.split(r"(?=Func:\s*\n?\d+)", texto_completo, flags=re.IGNORECASE)
+    padrao_func = re.compile(r"Func:\s*\n?(\d+)\s+([A-ZÀ-Ú\s]+)", re.IGNORECASE)
+    padrao_irrf_questor = re.compile(r"\bIRRF\b\s+([\d\.]+,\d{2})", re.IGNORECASE)
+
+    for bloco in partes_texto:
+        if not bloco.strip(): continue
+        match_func = padrao_func.search(bloco)
+        if not match_func: continue
+        
+        emp_id = match_func.group(1).strip()
+        nome = match_func.group(2).strip()
+        
+        # Busca a linha do IRRF no quadro de Base Impostos
+        match_base = padrao_irrf_questor.search(bloco)
+        base_irrf = match_base.group(1).strip() if match_base else "0,00"
+        
+        if emp_id and not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
+            dados_funcionarios.append({
+                "Empresa": str(codigo_empresa).strip(),
+                "Código Empregado": emp_id,
+                "Funcionário": nome,
+                "CPF": "N/D (Questor)",
+                "Competência": competencia.strip(),
+                "Base IRRF": base_irrf,
+                "Código Rubrica": str(codigo_rubrica).strip()
+            })
+            
+    return pd.DataFrame(dados_funcionarios)
+
 def gerar_linha_posicional(row):
     f_fixo = "10"
     f_emp = str(row['Código Empregado']).zfill(10)[:10]
@@ -336,14 +373,15 @@ with st.sidebar:
             "Contmatic Phoenix",
             "Alterdata",
             "SCI Contábil",
-            "Prosol"
+            "Prosol",
+            "Questor"
         ]
     )
     
     st.markdown("---")
     codigo_empresa_input = st.text_input("🔢 Código da Empresa:", value="1")
     codigo_rubrica = st.text_input("🏷️ Código da Rubrica (TXT):", value="2000")
-    competencia_input = st.text_input("📅 Competência (MM/AAAA):", value="08/2026")
+    competencia_input = st.text_input("📅 Competência (MM/AAAA):", value="05/2026")
     
     st.markdown("---")
     st.markdown("💡 *Dica: Você pode enviar múltiplos PDFs de uma só vez.*")
@@ -363,7 +401,7 @@ if arquivos_pdf:
     with col_info1:
         st.metric(label="📄 Arquivos Selecionados", value=len(arquivos_pdf))
     with col_info2:
-        st.metric(label="⚙️ Sistema Ativo", value=sistema_cliente.split()[0])
+        st.metric(label="⚙️️ Sistema Ativo", value=sistema_cliente.split()[0])
     with col_info3:
         st.metric(label="📅 Competência Alvo", value=competencia_input)
 
@@ -387,6 +425,8 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
                 df_extrato = extrair_dados_extrato_sci(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
             elif "Prosol" in sistema_cliente:
                 df_extrato = extrair_dados_extrato_prosol(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+            elif "Questor" in sistema_cliente:
+                df_extrato = extrair_dados_extrato_questor(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
             else:
                 df_extrato = pd.DataFrame()
                 
