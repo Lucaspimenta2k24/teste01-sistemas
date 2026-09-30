@@ -12,30 +12,94 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Estilização CSS: Fundo Escuro + Textos em Verde Esmeralda Neon ---
-st.markdown("""
-    <style>
-    /* Fundo geral da aplicação - Escuro Profundo */
+# --- Layout da Interface (Sidebar) ---
+with st.sidebar:
+    st.markdown("### ⚙️ Painel de Controle")
+    st.markdown("Configure os parâmetros de exportação dos dados contábeis.")
+    
+    # Seletor de Modo de Exibição (Mobile vs Padrão)
+    modo_exibicao = st.selectbox(
+        "📱 Formato da Tela:",
+        [
+            "Padrão (Responsivo / Desktop)",
+            "Simulador de Smartphone (App Mode)"
+        ]
+    )
+    
+    sistema_cliente = st.selectbox(
+        "🏢 Sistema / Leiaute:",
+        [
+            "Questor",
+            "Domínio (Thomson Reuters)",
+            "Contmatic Phoenix",
+            "Alterdata",
+            "SCI Contábil",
+            "Prosol"
+        ]
+    )
+    
+    st.markdown("---")
+    codigo_empresa_input = st.text_input("🔢 Código da Empresa:", value="1")
+    codigo_rubrica = st.text_input("🏷️ Código da Rubrica (TXT):", value="2000")
+    competencia_input = st.text_input("📅 Competência (MM/AAAA):", value="05/2026")
+    
+    st.markdown("---")
+    st.markdown("💡 *Dica: Você pode enviar múltiplos PDFs de uma só vez.*")
+
+# --- Estilização CSS Dinâmica (Modo Smartphone vs Desktop) ---
+if "Smartphone" in modo_exibicao:
+    css_modo = """
+    /* --- ESTILO SIMULADOR DE SMARTPHONE --- */
+    .stApp {
+        background-color: #090d16;
+        color: #00ffcc !important;
+        max-width: 420px;
+        margin: 2rem auto;
+        border-radius: 40px;
+        border: 12px solid #1f2937;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 25px rgba(0, 255, 204, 0.2);
+        overflow: hidden;
+        position: relative;
+        padding: 10px;
+    }
+    
+    /* Esconde cabeçalho padrão do Streamlit para focar na experiência de App */
+    header {visibility: hidden;}
+    
+    h1 {
+        font-size: 1.5rem !important;
+        text-align: center;
+    }
+    """
+else:
+    css_modo = """
+    /* --- ESTILO PADRÃO (DESKTOP/RESPONSIVO) --- */
     .stApp {
         background-color: #090d16;
         color: #00ffcc !important;
     }
+    """
+
+# Injeção de todo o CSS (Global + Modo escolhido)
+st.markdown(f"""
+    <style>
+    {css_modo}
     
     /* Forçar todas as palavras, títulos, subtítulos e textos em Verde Neon */
-    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown, .stText {
+    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown, .stText {{
         color: #00ffcc !important;
         font-family: 'Inter', sans-serif;
-    }
+    }}
     
     /* Inputs, textos digitados e selects com texto verde */
-    input, select, textarea {
+    input, select, textarea {{
         color: #00ffcc !important;
         background-color: #111827 !important;
         border-color: #00ffcc !important;
-    }
+    }}
 
     /* Botões modernos com gradiente em Verde Esmeralda Neon */
-    .stButton>button {
+    .stButton>button {{
         border-radius: 12px;
         font-weight: 700;
         background: linear-gradient(135deg, #00ffcc 0%, #00b386 100%);
@@ -45,46 +109,46 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(0, 255, 204, 0.4);
         transition: all 0.3s ease;
         width: 100%;
-    }
-    .stButton>button:hover {
+    }}
+    .stButton>button:hover {{
         background: linear-gradient(135deg, #00b386 0%, #008060 100%);
         box-shadow: 0 6px 20px rgba(0, 255, 204, 0.6);
         transform: translateY(-2px);
-    }
+    }}
     
     /* Cartões / Containers personalizados com borda neon suave */
-    .custom-card {
+    .custom-card {{
         background-color: #111827;
-        padding: 1.5rem;
+        padding: 1.2rem;
         border-radius: 16px;
         box-shadow: 0 4px 20px -2px rgba(0, 255, 204, 0.1);
         border: 1px solid rgba(0, 255, 204, 0.3);
         margin-bottom: 1rem;
-    }
+    }}
     
     /* Ajustes da barra lateral escura */
-    [data-testid="stSidebar"] {
+    [data-testid="stSidebar"] {{
         background-color: #0d1322;
         color: #00ffcc !important;
         border-right: 1px solid rgba(0, 255, 204, 0.2);
-    }
-    [data-testid="stSidebar"] * {
+    }}
+    [data-testid="stSidebar"] * {{
         color: #00ffcc !important;
-    }
+    }}
     
     /* Métricas e caixas de destaque */
-    [data-testid="stMetricValue"] {
+    [data-testid="stMetricValue"] {{
         color: #00ffcc !important;
         text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
-    }
+    }}
     
     /* File Uploader customizado */
-    [data-testid="stFileUploader"] {
+    [data-testid="stFileUploader"] {{
         background-color: #111827;
         border: 2px dashed rgba(0, 255, 204, 0.4);
         border-radius: 12px;
         padding: 1rem;
-    }
+    }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -266,11 +330,6 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
-    """
-    Abordagem ajustada e validada para o leiaute da Prosol:
-    - Captura o código do empregado e isola estritamente a linha '0105 BASE DE CALCULO I.R.R.F.'
-    - Pega com precisão o valor monetário correto da terceira coluna (ex: 2.329,50).
-    """
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
@@ -314,11 +373,6 @@ def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
-    """
-    Extrator dedicado ao leiaute do sistema Questor:
-    - Captura o código do empregado após o campo 'Func:'
-    - Captura a base de IRRF estritamente dentro do quadro 'Base Impostos', na linha 'IRRF' coluna 'Normal'.
-    """
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
@@ -364,54 +418,25 @@ def gerar_linha_posicional(row):
     f_empresa = str(row['Empresa']).zfill(10)[:10]
     return f"{f_fixo}{f_emp}{f_comp}{f_rubrica}{f_proc}{f_valor}{f_empresa}\n"
 
-# --- Layout da Interface (Sidebar) ---
-with st.sidebar:
-    st.markdown("### ⚙️ Painel de Controle")
-    st.markdown("Configure os parâmetros de exportação dos dados contábeis.")
-    
-    sistema_cliente = st.selectbox(
-        "🏢 Sistema / Leiaute:",
-        [
-            "Questor",
-            "Domínio (Thomson Reuters)",
-            "Contmatic Phoenix",
-            "Alterdata",
-            "SCI Contábil",
-            "Prosol"
-        ]
-    )
-    
-    st.markdown("---")
-    codigo_empresa_input = st.text_input("🔢 Código da Empresa:", value="1")
-    codigo_rubrica = st.text_input("🏷️ Código da Rubrica (TXT):", value="2000")
-    competencia_input = st.text_input("📅 Competência (MM/AAAA):", value="05/2026")
-    
-    st.markdown("---")
-    st.markdown("💡 *Dica: Você pode enviar múltiplos PDFs de uma só vez.*")
-
 # --- Layout Principal (Header & Conteúdo) ---
-st.title("⚡ Extrator Inteligente de Base IRRF")
-st.markdown("Transforme extratos de folha de pagamento em **layouts TXT posicionais e planilhas de conferência** com inteligência e precisão em segundos.")
+st.title("⚡ Extrator IRRF")
+st.markdown("Transforme extratos de folha em **TXT posicional** rapidamente.")
 
 # Cartão Principal de Upload
 st.markdown('<div class="custom-card">', unsafe_allow_html=True)
 st.markdown("### 📂 Upload de Extratos (PDF)")
-arquivos_pdf = st.file_uploader("Arraste ou selecione os arquivos PDF aqui", type=["pdf"], accept_multiple_files=True, label_visibility="collapsed")
+arquivos_pdf = st.file_uploader("Arraste ou selecione os arquivos PDF", type=["pdf"], accept_multiple_files=True, label_visibility="collapsed")
 st.markdown('</div>', unsafe_allow_html=True)
 
 if arquivos_pdf:
-    col_info1, col_info2, col_info3 = st.columns(3)
-    with col_info1:
-        st.metric(label="📄 Arquivos Selecionados", value=len(arquivos_pdf))
-    with col_info2:
-        st.metric(label="⚙️ Sistema Ativo", value=sistema_cliente.split()[0])
-    with col_info3:
-        st.metric(label="📅 Competência Alvo", value=competencia_input)
+    st.metric(label="📄 Arquivos Selecionados", value=len(arquivos_pdf))
+    st.metric(label="⚙️ Sistema Ativo", value=sistema_cliente.split()[0])
+    st.metric(label="📅 Competência", value=competencia_input)
 
-if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
+if arquivos_pdf and st.button("🚀 Processar Extratos"):
     todos_dados = []
     
-    with st.spinner("Processando arquivos com inteligência de leiaute... Por favor, aguarde ⏳"):
+    with st.spinner("Processando... Aguarde ⏳"):
         for arquivo in arquivos_pdf:
             caminho_temp = os.path.join("temp", arquivo.name)
             os.makedirs("temp", exist_ok=True)
@@ -443,12 +468,11 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
         df_final = pd.concat(todos_dados, ignore_index=True)
         
         if df_final.empty:
-            st.warning("⚠ Nenhum dado foi extraído. Verifique se o PDF corresponde ao leiaute selecionado.")
+            st.warning("⚠ Nenhum dado extraído.")
         else:
-            st.success(f"🎉 Processamento concluído com sucesso! {len(df_final)} registros mapeados.")
+            st.success(f"🎉 Sucesso! {len(df_final)} registros.")
             
-            # Exibição Visual Moderna dos Dados
-            st.markdown("### 📊 Prévia dos Dados Extraídos")
+            st.markdown("### 📊 Prévia")
             st.dataframe(df_final, use_container_width=True)
             
             output_csv = "extrato_irrf_consolidado.csv"
@@ -459,25 +483,11 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
                 for _, row in df_final.iterrows():
                     f.write(gerar_linha_posicional(row))
 
-            st.markdown("### 📥 Central de Downloads")
-            col_dl1, col_dl2 = st.columns(2)
-            
-            with col_dl1:
-                with open(output_csv, "rb") as f:
-                    st.download_button(
-                        label="📥 Baixar Planilha de Conferência (CSV)",
-                        data=f,
-                        file_name=output_csv,
-                        mime="text/csv"
-                    )
+            st.markdown("### 📥 Downloads")
+            with open(output_csv, "rb") as f:
+                st.download_button(label="📥 Baixar CSV", data=f, file_name=output_csv, mime="text/csv")
                     
-            with col_dl2:
-                with open(output_txt, "r", encoding="utf-8") as f:
-                    st.download_button(
-                        label="📄 Baixar TXT Posicional (Leiaute)",
-                        data=f,
-                        file_name=output_txt,
-                        mime="text/plain"
-                    )
+            with open(output_txt, "r", encoding="utf-8") as f:
+                st.download_button(label="📄 Baixar TXT", data=f, file_name=output_txt, mime="text/plain")
     else:
-        st.warning("⚠️ Nenhum dado válido foi encontrado nos arquivos enviados.")
+        st.warning("⚠️ Nenhum dado válido encontrado.")
