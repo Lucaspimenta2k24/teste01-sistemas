@@ -261,7 +261,7 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
         while i < len(linhas):
             linha = linhas[i]
             
-            # BLINDAGEM SCI: Captura estritamente a linha que possui "Admitido em"
+            # Captura estritamente a linha que possui "Admitido em" para o funcionário
             if "ADMITIDO EM" in linha.upper():
                 match_func = re.search(r"^(\d+)\s+(.+?)\s+Admitido em", linha, re.IGNORECASE)
                 if match_func:
@@ -269,15 +269,25 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
                     nome_func = match_func.group(2).strip()
                     nome_func = re.sub(r"\s+\d+\s*\d*$", "", nome_func).strip()
                     
-                    # Procura o valor exato do campo "IR ->" nas linhas pertencentes a este funcionário
+                    # Varre as linhas seguintes buscando o campo "IR ->" para extrair estritamente o valor à frente dele
                     base_irrf = "0,00"
                     j = i
                     while j < len(linhas) and (j == i or "ADMITIDO EM" not in linhas[j].upper()):
-                        if "IR ->" in linhas[j].upper():
-                            val_match = re.findall(r"([\d\.]+,\d{2})", linhas[j])
-                            if val_match:
-                                base_irrf = val_match[-1]
-                                break
+                        linha_atual = linhas[j]
+                        if "IR ->" in linha_atual.upper():
+                            # Procura especificamente o valor monetário que vem após "IR ->"
+                            partes_ir = linha_atual.upper().split("IR ->")
+                            if len(partes_ir) > 1:
+                                val_match = re.findall(r"([\d\.]+,\d{2})", partes_ir[1])
+                                if val_match:
+                                    base_irrf = val_match[0]
+                                    break
+                            # Caso venha na linha seguinte após o "IR ->" isolado
+                            elif j + 1 < len(linhas):
+                                val_match_prox = re.findall(r"([\d\.]+,\d{2})", linhas[j+1])
+                                if val_match_prox:
+                                    base_irrf = val_match_prox[0]
+                                    break
                         j += 1
                         
                     if not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
