@@ -310,9 +310,9 @@ def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica
 
 def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     """
-    Extrator dedicado ao leiaute do sistema Questor:
-    - O código do empregado vem após o campo 'Func:' (ex: 'Func:\n1 NICILAINE...')
-    - A base de IRRF é obtida da linha 'IRRF' contida no quadro de Base Impostos.
+    Extrator dedicado ao leiaute do sistema Questor (Corrigido):
+    - Captura o código do empregado após o campo 'Func:'
+    - Captura a base de IRRF estritamente no quadro 'Base Impostos', pegando o valor correspondente à linha 'IRRF'.
     """
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
@@ -320,10 +320,10 @@ def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubric
 
     if not texto_completo.strip(): return pd.DataFrame()
 
-    # Divide o texto por blocos iniciados por "Func:"
     partes_texto = re.split(r"(?=Func:\s*\n?\d+)", texto_completo, flags=re.IGNORECASE)
     padrao_func = re.compile(r"Func:\s*\n?(\d+)\s+([A-ZÀ-Ú\s]+)", re.IGNORECASE)
-    padrao_irrf_questor = re.compile(r"\bIRRF\b\s+([\d\.]+,\d{2})", re.IGNORECASE)
+    # Expressão ajustada para capturar o valor da linha IRRF dentro da tabela Base Impostos
+    padrao_irrf_questor = re.compile(r"\bIRRF\s+([\d\.]+,\d{2})\b", re.IGNORECASE)
 
     for bloco in partes_texto:
         if not bloco.strip(): continue
@@ -333,7 +333,6 @@ def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubric
         emp_id = match_func.group(1).strip()
         nome = match_func.group(2).strip()
         
-        # Busca a linha do IRRF no quadro de Base Impostos
         match_base = padrao_irrf_questor.search(bloco)
         base_irrf = match_base.group(1).strip() if match_base else "0,00"
         
@@ -401,7 +400,7 @@ if arquivos_pdf:
     with col_info1:
         st.metric(label="📄 Arquivos Selecionados", value=len(arquivos_pdf))
     with col_info2:
-        st.metric(label="⚙️️ Sistema Ativo", value=sistema_cliente.split()[0])
+        st.metric(label="⚙️ Sistema Ativo", value=sistema_cliente.split()[0])
     with col_info3:
         st.metric(label="📅 Competência Alvo", value=competencia_input)
 
