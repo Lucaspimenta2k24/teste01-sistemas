@@ -266,6 +266,11 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
     return pd.DataFrame(dados_funcionarios)
 
 def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+    """
+    Abordagem ajustada e validada para o leiaute da Prosol:
+    - Captura o código do empregado e isola estritamente a linha '0105 BASE DE CALCULO I.R.R.F.'
+    - Pega com precisão o valor monetário correto da terceira coluna (ex: 2.329,50).
+    """
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
@@ -310,9 +315,9 @@ def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica
 
 def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     """
-    Extrator dedicado ao leiaute do sistema Questor (Corrigido):
+    Extrator dedicado ao leiaute do sistema Questor:
     - Captura o código do empregado após o campo 'Func:'
-    - Captura a base de IRRF estritamente no quadro 'Base Impostos', pegando o valor correspondente à linha 'IRRF'.
+    - Captura a base de IRRF estritamente dentro do quadro 'Base Impostos', na linha 'IRRF' coluna 'Normal'.
     """
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
@@ -322,8 +327,7 @@ def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubric
 
     partes_texto = re.split(r"(?=Func:\s*\n?\d+)", texto_completo, flags=re.IGNORECASE)
     padrao_func = re.compile(r"Func:\s*\n?(\d+)\s+([A-ZÀ-Ú\s]+)", re.IGNORECASE)
-    # Expressão ajustada para capturar o valor da linha IRRF dentro da tabela Base Impostos
-    padrao_irrf_questor = re.compile(r"\bIRRF\s+([\d\.]+,\d{2})\b", re.IGNORECASE)
+    padrao_base_impostos_irrf = re.compile(r"Base\s+Impostos.*?IRRF\s+([\d\.]+,\d{2})", re.IGNORECASE | re.DOTALL)
 
     for bloco in partes_texto:
         if not bloco.strip(): continue
@@ -333,7 +337,7 @@ def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubric
         emp_id = match_func.group(1).strip()
         nome = match_func.group(2).strip()
         
-        match_base = padrao_irrf_questor.search(bloco)
+        match_base = padrao_base_impostos_irrf.search(bloco)
         base_irrf = match_base.group(1).strip() if match_base else "0,00"
         
         if emp_id and not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
@@ -368,12 +372,12 @@ with st.sidebar:
     sistema_cliente = st.selectbox(
         "🏢 Sistema / Leiaute:",
         [
+            "Questor",
             "Domínio (Thomson Reuters)",
             "Contmatic Phoenix",
             "Alterdata",
             "SCI Contábil",
-            "Prosol",
-            "Questor"
+            "Prosol"
         ]
     )
     
@@ -414,7 +418,9 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
             with open(caminho_temp, "wb") as f:
                 f.write(arquivo.getbuffer())
                 
-            if "Domínio" in sistema_cliente:
+            if "Questor" in sistema_cliente:
+                df_extrato = extrair_dados_extrato_questor(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+            elif "Domínio" in sistema_cliente:
                 df_extrato = extrair_dados_extrato_dominio(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
             elif "Contmatic" in sistema_cliente:
                 df_extrato = extrair_dados_extrato_contmatic(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
@@ -424,8 +430,6 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
                 df_extrato = extrair_dados_extrato_sci(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
             elif "Prosol" in sistema_cliente:
                 df_extrato = extrair_dados_extrato_prosol(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
-            elif "Questor" in sistema_cliente:
-                df_extrato = extrair_dados_extrato_questor(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
             else:
                 df_extrato = pd.DataFrame()
                 
