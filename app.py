@@ -17,7 +17,6 @@ with st.sidebar:
     st.markdown("### ⚙️ Painel de Controle")
     st.markdown("Configure os parâmetros de exportação dos dados contábeis.")
     
-    # Seletor de Modo de Exibição (Mobile vs Padrão)
     modo_exibicao = st.selectbox(
         "📱 Formato da Tela:",
         [
@@ -46,28 +45,28 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("💡 *Dica: Você pode enviar múltiplos PDFs de uma só vez.*")
 
-# --- Estilização CSS Dinâmica (Modo Smartphone vs Desktop) ---
+# --- Estilização CSS Dinâmica Corrigida ---
 if "Smartphone" in modo_exibicao:
     css_modo = """
-    /* --- ESTILO SIMULADOR DE SMARTPHONE --- */
+    /* --- ESTILO SIMULADOR DE SMARTPHONE CORRIGIDO --- */
     .stApp {
-        background-color: #090d16;
+        background-color: #090d16 !important;
         color: #00ffcc !important;
-        max-width: 420px;
-        margin: 2rem auto;
-        border-radius: 40px;
-        border: 12px solid #1f2937;
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 25px rgba(0, 255, 204, 0.2);
-        overflow: hidden;
-        position: relative;
-        padding: 10px;
+        max-width: 400px !important;
+        height: 820px !important;
+        margin: 30px auto !important;
+        border-radius: 36px !important;
+        border: 10px solid #1f2937 !important;
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.9), 0 0 20px rgba(0, 255, 204, 0.25) !important;
+        overflow-y: auto !important;
+        position: relative !important;
+        display: block !important;
     }
     
-    /* Esconde cabeçalho padrão do Streamlit para focar na experiência de App */
     header {visibility: hidden;}
     
     h1 {
-        font-size: 1.5rem !important;
+        font-size: 1.3rem !important;
         text-align: center;
     }
     """
@@ -80,25 +79,22 @@ else:
     }
     """
 
-# Injeção de todo o CSS (Global + Modo escolhido)
 st.markdown(f"""
     <style>
     {css_modo}
     
-    /* Forçar todas as palavras, títulos, subtítulos e textos em Verde Neon */
+    /* Forçar cores e fontes em tom esmeralda neon */
     h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown, .stText {{
         color: #00ffcc !important;
         font-family: 'Inter', sans-serif;
     }}
     
-    /* Inputs, textos digitados e selects com texto verde */
     input, select, textarea {{
         color: #00ffcc !important;
         background-color: #111827 !important;
         border-color: #00ffcc !important;
     }}
 
-    /* Botões modernos com gradiente em Verde Esmeralda Neon */
     .stButton>button {{
         border-radius: 12px;
         font-weight: 700;
@@ -116,7 +112,6 @@ st.markdown(f"""
         transform: translateY(-2px);
     }}
     
-    /* Cartões / Containers personalizados com borda neon suave */
     .custom-card {{
         background-color: #111827;
         padding: 1.2rem;
@@ -126,7 +121,6 @@ st.markdown(f"""
         margin-bottom: 1rem;
     }}
     
-    /* Ajustes da barra lateral escura */
     [data-testid="stSidebar"] {{
         background-color: #0d1322;
         color: #00ffcc !important;
@@ -136,13 +130,11 @@ st.markdown(f"""
         color: #00ffcc !important;
     }}
     
-    /* Métricas e caixas de destaque */
     [data-testid="stMetricValue"] {{
         color: #00ffcc !important;
         text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
     }}
     
-    /* File Uploader customizado */
     [data-testid="stFileUploader"] {{
         background-color: #111827;
         border: 2px dashed rgba(0, 255, 204, 0.4);
@@ -153,7 +145,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 def converter_competencia_aaamm(competencia_str):
-    """Converte MM/AAAA para AAAAMM conforme o leiaute."""
     comp_limpa = re.sub(r'\D', '', competencia_str)
     if '/' in competencia_str:
         partes = competencia_str.split('/')
@@ -490,4 +481,4 @@ if arquivos_pdf and st.button("🚀 Processar Extratos"):
             with open(output_txt, "r", encoding="utf-8") as f:
                 st.download_button(label="📄 Baixar TXT", data=f, file_name=output_txt, mime="text/plain")
     else:
-        st.warning("⚠️ Nenhum dado válido encontrado.")
+        st.warning("⚠️️ Nenhum dado válido encontrado.")
