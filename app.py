@@ -6,7 +6,7 @@ import streamlit as st
 
 # --- Configuração Inicial da Página ---
 st.set_page_config(
-    page_title="Extrator Inteligente de IRRF",
+    page_title="Extrator Inteligente de Base do IRRF",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
