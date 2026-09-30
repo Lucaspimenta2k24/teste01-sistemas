@@ -390,7 +390,7 @@ with st.sidebar:
     st.markdown("💡 *Dica: Você pode enviar múltiplos PDFs de uma só vez.*")
 
 # --- Layout Principal (Header & Conteúdo) ---
-st.title("⚡ Extrator Inteligente de Base IRRF")
+st.title("⚡ Extrator Inteligente da Base de IRRF Folha")
 st.markdown("Transforme extratos de folha de pagamento em **layouts TXT posicionais e planilhas de conferência** com inteligência e precisão em segundos.")
 
 # Cartão Principal de Upload
