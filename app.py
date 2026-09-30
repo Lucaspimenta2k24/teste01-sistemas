@@ -105,13 +105,11 @@ def extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, com
     nome = "Funcionário Geral"
     
     for idx, linha in enumerate(linhas):
-        # Ignora cabeçalhos comuns e rodapés
         if any(termo in linha.upper() for termo in ["TOTAL", "PÁGINA", "CNPJ", "RELATÓRIO", "EMPRESA"]):
             continue
             
         valores = padrao_valor.findall(linha)
         if valores:
-            # Tenta extrair um código numérico no começo da linha se houver
             partes_linha = linha.split()
             if partes_linha and partes_linha[0].isdigit() and len(partes_linha[0]) <= 5:
                 emp_id = partes_linha[0]
@@ -120,9 +118,8 @@ def extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, com
                     if not nome.strip():
                         nome = f"Funcionário {emp_id}"
             
-            base_irrf = valores[-1] # Pega o último valor monetário da linha como base provável
+            base_irrf = valores[-1]
             
-            # Evita duplicatas exatas
             if not any(d.get('Código Empregado') == emp_id and d.get('Base IRRF') == base_irrf for d in dados_funcionarios):
                 dados_funcionarios.append({
                     "Empresa": str(codigo_empresa).strip(),
@@ -263,31 +260,40 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
 
         linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
         emp_id, nome, base_irrf = None, "Funcionário", "0,00"
-        padrao_codigo_nome = re.compile(r"^(\d{1,5})\s+([A-ZÀ-Úa-zà-ú\s]{3,})$")
+        
+        # Padrão estrito para identificar linhas de funcionário logo abaixo de "CÓD. NOME DO FUNCIONÁRIO"
+        padrao_funcionario_sci = re.compile(r"^(\d{1,5})\s+([A-ZÀ-Úa-zà-ú\s]{3,})$")
+        padrao_rubrica_sci = re.compile(r"^(Salário|Horas|D\.S\.R\.|Adiant|Arred|I\.N\.S\.S|I\.R\.)", re.IGNORECASE)
         padrao_valor_monetario = re.compile(r"([\d\.]+,\d{2})")
 
         i = 0
         while i < len(linhas):
             linha = linhas[i]
-            match_cod_nome = padrao_codigo_nome.match(linha)
-            if match_cod_nome and "TOTAL" not in linha.upper() and "Página" not in linha and "IR" not in linha.upper():
-                candidato_id = match_cod_nome.group(1).strip()
-                candidato_nome = match_cod_nome.group(2).strip()
-                if len(candidato_id) <= 5:
+            
+            match_func = padrao_funcionario_sci.match(linha)
+            if match_func and not padrao_rubrica_sci.search(linha) and "TOTAL" not in linha.upper() and "Página" not in linha:
+                candidato_id = match_func.group(1).strip()
+                candidato_nome = match_func.group(2).strip()
+                
+                # Garante que o contexto anterior corresponda ao cabeçalho do empregado
+                if i > 0 and ("PROVENTOS" in linhas[i-1].upper() or "CÓD." in linhas[i-1].upper() or "SF" in linhas[i-1].upper()):
                     emp_id = candidato_id
                     nome = candidato_nome
 
             if "IR" in linha.upper() or "BASE" in linha.upper() or "IMPOSTO" in linha.upper():
                 valores = padrao_valor_monetario.findall(linha)
-                if valores:
+                if valores and emp_id:
                     base_irrf = valores[-1]
-                    if emp_id:
-                        if not any(d.get('Código Empregado') == emp_id and d.get('Base IRRF') == base_irrf for d in dados_funcionarios):
-                            dados_funcionarios.append({
-                                "Empresa": str(codigo_empresa).strip(), "Código Empregado": emp_id,
-                                "Funcionário": nome, "CPF": "N/D (SCI)", "Competência": competencia.strip(),
-                                "Base IRRF": base_irrf, "Código Rubrica": str(codigo_rubrica).strip()
-                            })
+                    if not any(d.get('Código Empregado') == emp_id and d.get('Base IRRF') == base_irrf for d in dados_funcionarios):
+                        dados_funcionarios.append({
+                            "Empresa": str(codigo_empresa).strip(), 
+                            "Código Empregado": emp_id,
+                            "Funcionário": nome, 
+                            "CPF": "N/D (SCI)", 
+                            "Competência": competencia.strip(),
+                            "Base IRRF": base_irrf, 
+                            "Código Rubrica": str(codigo_rubrica).strip()
+                        })
             i += 1
             
         df = pd.DataFrame(dados_funcionarios)
