@@ -6,7 +6,7 @@ import streamlit as st
 
 # --- Configuração Inicial da Página ---
 st.set_page_config(
-    page_title="Extrator Inteligente de IRRF",
+    page_title="Extrator Inteligente de Base IRRF",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -139,12 +139,6 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
 
         partes_texto = re.split(r"(?=Funcionário:\s*\d+)", texto_completo, flags=re.IGNORECASE)
         padrao_func = re.compile(r"Funcionário:\s*(\d+)\s*(?:-|[A-ZÀ-Ú\s]+)?([A-ZÀ-Ú\s]+)", re.IGNORECASE)
-        
-        # Regex aprimorada para capturar exatamente o valor entre Base Bruta de IRRF e Base INSS Empresa
-        padrao_base_bruta = re.compile(
-            r"Base\s*Bruta\s*de\s*IRRF\s*:\s*(?:\|?\s*)*([\d\.]+,\d{2})\s*(?:\|?\s*)*Base\s*INSS\s*Empresa\s*:", 
-            re.IGNORECASE | re.DOTALL
-        )
 
         for bloco in partes_texto:
             if not bloco.strip(): 
@@ -169,16 +163,20 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
                 nome_completo = "Funcionário"
             nome_limpo = " ".join(nome_completo.split())
 
-            base_irrf = "0,00"
-            match_base = padrao_base_bruta.search(bloco)
+            # Utilização da lógica customizada solicitada para extração da base bruta de IRRF por funcionário
+            base_bruta = 0.0
+            padrao_base = r"Base\s+Bruta\s+(?:de\s+)?IRRF[:\s]*([\d\.,]+)"
+            match_base = re.search(padrao_base, bloco, re.IGNORECASE)
             if match_base:
-                base_irrf = match_base.group(1).strip()
-            else:
-                # Fallback caso a linha quebre de forma diferente no PDF
-                padrao_alternativo = re.compile(r"Base\s*Bruta\s*de\s*IRRF\s*:\s*(?:\|?\s*)*([\d\.]+,\d{2})", re.IGNORECASE)
-                match_alt = padrao_alternativo.search(bloco)
-                if match_alt:
-                    base_irrf = match_alt.group(1).strip()
+                valor_str = match_base.group(1)
+                valor_tratado = valor_str.replace(".", "").replace(",", ".")
+                try:
+                    base_bruta = float(valor_tratado)
+                except ValueError:
+                    pass
+            
+            # Formata de volta para o padrão brasileiro com 2 casas decimais para exibição na tabela
+            base_irrf = f"{base_bruta:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
             if emp_id and not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
                 dados_funcionarios.append({
