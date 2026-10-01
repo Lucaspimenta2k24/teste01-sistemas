@@ -137,12 +137,14 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
         if not texto_completo.strip(): 
             return pd.DataFrame()
 
-        # Ajuste robusto para quebrar os blocos por funcionário no leiaute IOB
         partes_texto = re.split(r"(?=Funcionário:\s*\d+)", texto_completo, flags=re.IGNORECASE)
         padrao_func = re.compile(r"Funcionário:\s*(\d+)\s*(?:-|[A-ZÀ-Ú\s]+)?([A-ZÀ-Ú\s]+)", re.IGNORECASE)
         
-        # Regex atualizada para capturar o valor ignorando quebras de linha e caracteres de formatação da tabela do PDF
-        padrao_base_bruta = re.compile(r"Base\s*Bruta\s*de\s*IRRF\s*:\s*(?:\|?\s*)*([\d\.]+,\d{2})", re.IGNORECASE)
+        # Regex aprimorada para capturar exatamente o valor entre Base Bruta de IRRF e Base INSS Empresa
+        padrao_base_bruta = re.compile(
+            r"Base\s*Bruta\s*de\s*IRRF\s*:\s*(?:\|?\s*)*([\d\.]+,\d{2})\s*(?:\|?\s*)*Base\s*INSS\s*Empresa\s*:", 
+            re.IGNORECASE | re.DOTALL
+        )
 
         for bloco in partes_texto:
             if not bloco.strip(): 
@@ -156,7 +158,6 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
             
             emp_id = match_func.group(1).strip()
             
-            # Extração limpa do nome do funcionário
             linha_func = bloco.split('\n')[0] if '\n' in bloco else bloco
             if '-' in linha_func:
                 partes_nome = linha_func.split('-')
@@ -172,6 +173,12 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
             match_base = padrao_base_bruta.search(bloco)
             if match_base:
                 base_irrf = match_base.group(1).strip()
+            else:
+                # Fallback caso a linha quebre de forma diferente no PDF
+                padrao_alternativo = re.compile(r"Base\s*Bruta\s*de\s*IRRF\s*:\s*(?:\|?\s*)*([\d\.]+,\d{2})", re.IGNORECASE)
+                match_alt = padrao_alternativo.search(bloco)
+                if match_alt:
+                    base_irrf = match_alt.group(1).strip()
 
             if emp_id and not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
                 dados_funcionarios.append({
@@ -525,6 +532,10 @@ st.markdown("### 📂 Upload de Extratos (PDF)")
 arquivos_pdf = st.file_uploader("Arraste ou selecione os arquivos PDF aqui", type=["pdf"], accept_multiple_files=True, label_visibility="collapsed")
 st.markdown('</div>', unsafe_allow_html=True)
 
+# Inicializa o session_state para persistir os dados editados sem resetar
+if "df_editado" not in st.session_state:
+    st.session_state.df_editado = None
+
 if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
     todos_dados = []
     with st.spinner("Processando arquivos com inteligência de leiaute... Por favor, aguarde ⏳"):
@@ -562,28 +573,35 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
         df_bruto = pd.concat(todos_dados, ignore_index=True)
         if df_bruto.empty:
             st.warning("⚠️ Nenhum dado foi extraído. Verifique se o PDF contém texto legível (não escaneado como imagem).")
+            st.session_state.df_editado = None
         else:
-            st.success(f"🎉 Processamento concluído com sucesso! {len(df_bruto)} registros mapeados.")
-            st.markdown("### 📊 Prévia dos Dados Extraídos")
-            st.info("💡 **Dica:** Você pode alterar o **Código Empregado** ou qualquer outra informação clicando diretamente nas células da tabela abaixo antes de baixar os arquivos!")
-            
-            df_final = st.data_editor(df_bruto, use_container_width=True, num_rows="dynamic")
-            
-            output_csv = "extrato_irrf_consolidado.csv"
-            df_final.to_csv(output_csv, index=False, sep=";", encoding="utf-8-sig")
-            
-            output_txt = "importacao_irrf.txt"
-            with open(output_txt, "w", encoding="utf-8") as f:
-                for _, row in df_final.iterrows():
-                    f.write(gerar_linha_posicional(row))
-
-            st.markdown("### 📥 Central de Downloads")
-            col_dl1, col_dl2 = st.columns(2)
-            with col_dl1:
-                with open(output_csv, "rb") as f:
-                    st.download_button("📥 Baixar Planilha de Conferência (CSV)", data=f, file_name=output_csv, mime="text/csv")
-            with col_dl2:
-                with open(output_txt, "r", encoding="utf-8") as f:
-                    st.download_button("📄 Baixar TXT Posicional (Leiaute)", data=f, file_name=output_txt, mime="text/plain")
+            st.session_state.df_editado = df_bruto
     else:
         st.warning("⚠️ Nenhum dado válido foi encontrado nos arquivos enviados. Certifique-se de que os PDFs contêm texto selecionável (e não são imagens digitalizadas/scaneadas).")
+        st.session_state.df_editado = None
+
+# Exibição da tabela e central de downloads baseada no session_state
+if st.session_state.df_editado is not None and not st.session_state.df_editado.empty:
+    st.success(f"🎉 Processamento concluído com sucesso! {len(st.session_state.df_editado)} registros mapeados.")
+    st.markdown("### 📊 Prévia dos Dados Extraídos")
+    st.info("💡 **Dica:** Você pode alterar o **Código Empregado** ou qualquer outra informação clicando diretamente nas células da tabela abaixo antes de baixar os arquivos!")
+    
+    # O data_editor agora atualiza o session_state sem perder o estado da tela ao editar campos
+    df_final = st.data_editor(st.session_state.df_editado, use_container_width=True, num_rows="dynamic", key="editor_dados")
+    
+    output_csv = "extrato_irrf_consolidado.csv"
+    df_final.to_csv(output_csv, index=False, sep=";", encoding="utf-8-sig")
+    
+    output_txt = "importacao_irrf.txt"
+    with open(output_txt, "w", encoding="utf-8") as f:
+        for _, row in df_final.iterrows():
+            f.write(gerar_linha_posicional(row))
+
+    st.markdown("### 📥 Central de Downloads")
+    col_dl1, col_dl2 = st.columns(2)
+    with col_dl1:
+        with open(output_csv, "rb") as f:
+            st.download_button("📥 Baixar Planilha de Conferência (CSV)", data=f, file_name=output_csv, mime="text/csv")
+    with col_dl2:
+        with open(output_txt, "r", encoding="utf-8") as f:
+            st.download_button("📄 Baixar TXT Posicional (Leiaute)", data=f, file_name=output_txt, mime="text/plain")
