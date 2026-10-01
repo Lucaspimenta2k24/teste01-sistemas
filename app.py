@@ -139,11 +139,10 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
 
         partes_texto = re.split(r"(?=Funcionário:)", texto_completo, flags=re.IGNORECASE)
         
-        # Regex robusta para capturar o ID e o nome do funcionário corretamente
         padrao_func = re.compile(r"Funcionário:\s*(\d+)\s*(?:-\s*)?([A-ZÀ-Ú\s]+)", re.IGNORECASE)
         
-        # Regex robusta para capturar o valor logo após "Base Bruta de IRRF:" considerando possíveis quebras ou espaços
-        padrao_base_bruta_irrf = re.compile(r"Base\s+Bruta\s+de\s+IRRF\s*:\s*([\d\.]+,\d{2})", re.IGNORECASE | re.DOTALL)
+        # Regex ajustada para capturar o valor monetário que aparece logo após a string "Base Bruta de IRRF" independentemente de quebras exatas
+        padrao_base_bruta_irrf = re.compile(r"Base\s+Bruta\s+de\s+IRRF\s*[:\s]*([\d\.]+,\d{2})", re.IGNORECASE)
 
         for bloco in partes_texto:
             if not bloco.strip(): 
