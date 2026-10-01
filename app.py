@@ -137,13 +137,13 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
         if not texto_completo.strip(): 
             return pd.DataFrame()
 
-        # Divide o texto por blocos que iniciam com "Funcionário:"
         partes_texto = re.split(r"(?=Funcionário:)", texto_completo, flags=re.IGNORECASE)
         
         padrao_func = re.compile(r"Funcionário:\s*(\d+)\s*-\s*([A-ZÀ-Ú\s]+)|Funcionário:\s*(\d+)([A-ZÀ-Ú\s]+)", re.IGNORECASE)
-        # Padrao alternativo caso venha colado ex: 19EDNA CIRILO FULGENZI
         padrao_func_colado = re.compile(r"Funcionário:\s*(\d+)([A-ZÀ-Ú\s]+)", re.IGNORECASE)
-        padrao_base_bruta_irrf = re.compile(r"Base\s*Bruta\s*de\s*IRRF:\s*([\d\.]+,\d{2})", re.IGNORECASE)
+        
+        # Regex robusta para capturar o valor logo após "Base Bruta de IRRF:" considerando possíveis quebras ou espaços
+        padrao_base_bruta_irrf = re.compile(r"Base\s+Bruta\s+de\s+IRRF\s*:\s*([\d\.]+,\d{2})", re.IGNORECASE | re.DOTALL)
 
         for bloco in partes_texto:
             if not bloco.strip(): 
@@ -158,11 +158,8 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
             if not match_func: 
                 continue
             
-            # Extrai ID e Nome
             emp_id = match_func.group(1).strip()
             nome_completo = match_func.group(2).strip()
-            
-            # Limpa quebras de linha extras no nome se houver
             nome_limpo = " ".join(nome_completo.split())
 
             match_base = padrao_base_bruta_irrf.search(bloco)
@@ -562,7 +559,6 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
             st.markdown("### 📊 Prévia dos Dados Extraídos")
             st.info("💡 **Dica:** Você pode alterar o **Código Empregado** ou qualquer outra informação clicando diretamente nas células da tabela abaixo antes de baixar os arquivos!")
             
-            # Tabela editável com suporte a alterações diretas
             df_final = st.data_editor(df_bruto, use_container_width=True, num_rows="dynamic")
             
             output_csv = "extrato_irrf_consolidado.csv"
