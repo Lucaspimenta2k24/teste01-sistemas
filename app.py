@@ -129,6 +129,63 @@ def extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, com
                 
     return pd.DataFrame(dados_funcionarios)
 
+def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+    try:
+        dados_funcionarios = []
+        with pdfplumber.open(caminho_pdf) as pdf:
+            texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
+        if not texto_completo.strip(): 
+            return pd.DataFrame()
+
+        # Divide o texto por blocos que iniciam com "Funcionário:"
+        partes_texto = re.split(r"(?=Funcionário:)", texto_completo, flags=re.IGNORECASE)
+        
+        padrao_func = re.compile(r"Funcionário:\s*(\d+)\s*-\s*([A-ZÀ-Ú\s]+)|Funcionário:\s*(\d+)([A-ZÀ-Ú\s]+)", re.IGNORECASE)
+        # Padrao alternativo caso venha colado ex: 19EDNA CIRILO FULGENZI
+        padrao_func_colado = re.compile(r"Funcionário:\s*(\d+)([A-ZÀ-Ú\s]+)", re.IGNORECASE)
+        padrao_base_bruta_irrf = re.compile(r"Base\s*Bruta\s*de\s*IRRF:\s*([\d\.]+,\d{2})", re.IGNORECASE)
+
+        for bloco in partes_texto:
+            if not bloco.strip(): 
+                continue
+            if "TOTAL GERAL" in bloco.upper() or "TOTALIZAÇÃO DA FOLHA" in bloco.upper():
+                continue
+            
+            match_func = padrao_func_colado.search(bloco)
+            if not match_func:
+                match_func = padrao_func.search(bloco)
+            
+            if not match_func: 
+                continue
+            
+            # Extrai ID e Nome
+            emp_id = match_func.group(1).strip()
+            nome_completo = match_func.group(2).strip()
+            
+            # Limpa quebras de linha extras no nome se houver
+            nome_limpo = " ".join(nome_completo.split())
+
+            match_base = padrao_base_bruta_irrf.search(bloco)
+            base_irrf = match_base.group(1).strip() if match_base else "0,00"
+
+            if emp_id and not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
+                dados_funcionarios.append({
+                    "Empresa": str(codigo_empresa).strip(),
+                    "Código Empregado": emp_id,
+                    "Funcionário": nome_limpo[:40],
+                    "CPF": "N/D (IOB)",
+                    "Competência": competencia.strip(),
+                    "Base IRRF": base_irrf,
+                    "Código Rubrica": str(codigo_rubrica).strip()
+                })
+
+        df = pd.DataFrame(dados_funcionarios)
+        if df.empty:
+            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "IOB")
+        return df
+    except Exception:
+        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "IOB")
+
 def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     try:
         dados_funcionarios = []
@@ -447,7 +504,7 @@ with st.sidebar:
     st.markdown("### ⚙️ Painel de Controle")
     sistema_cliente = st.selectbox(
         "🏢 Sistema / Leiaute:",
-        ["Questor", "Domínio (Thomson Reuters)", "Contmatic Phoenix", "Alterdata", "SCI Contábil", "Prosol", "Cuca Fresca"]
+        ["Questor", "Domínio (Thomson Reuters)", "Contmatic Phoenix", "Alterdata", "SCI Contábil", "Prosol", "Cuca Fresca", "IOB"]
     )
     st.markdown("---")
     codigo_empresa_input = st.text_input("🔢 Código da Empresa:", value="1")
@@ -486,6 +543,8 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
                 df_extrato = extrair_dados_extrato_prosol(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
             elif "Cuca Fresca" in sistema_cliente:
                 df_extrato = extrair_dados_extrato_cucafresca(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+            elif "IOB" in sistema_cliente:
+                df_extrato = extrair_dados_extrato_iob(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
             else:
                 df_extrato = pd.DataFrame()
                 
