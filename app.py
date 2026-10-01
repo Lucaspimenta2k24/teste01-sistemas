@@ -86,7 +86,7 @@ def converter_competencia_aaamm(competencia_str):
         return f"{ano}{mes}"
     return comp_limpa.zfill(6)[:6]
 
-def extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, nome_sistema):
+def extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, nome_sistema, override_empresa=None):
     dados_funcionarios = []
     with pdfplumber.open(caminho_pdf) as pdf:
         texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
@@ -97,7 +97,7 @@ def extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, com
     linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
     padrao_valor = re.compile(r"([\d\.]+,\d{2})")
     
-    emp_id = "1"
+    emp_id = override_empresa if override_empresa else "1"
     nome = "Funcionário Geral"
     
     for idx, linha in enumerate(linhas):
@@ -107,12 +107,16 @@ def extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, com
         valores = padrao_valor.findall(linha)
         if valores:
             partes_linha = linha.split()
-            if partes_linha and partes_linha[0].isdigit() and len(partes_linha[0]) <= 5:
+            if not override_empresa and partes_linha and partes_linha[0].isdigit() and len(partes_linha[0]) <= 5:
                 emp_id = partes_linha[0]
                 if len(partes_linha) > 1:
                     nome = " ".join([p for p in partes_linha[1:] if not padrao_valor.search(p)])
                     if not nome.strip():
                         nome = f"Funcionário {emp_id}"
+            elif override_empresa:
+                emp_id = override_empresa
+                if len(partes_linha) > 1:
+                    nome = " ".join([p for p in partes_linha if not padrao_valor.search(p)])
             
             base_irrf = valores[-1]
             
@@ -129,7 +133,7 @@ def extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, com
                 
     return pd.DataFrame(dados_funcionarios)
 
-def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia="", override_empresa=None):
     try:
         dados_funcionarios = []
         with pdfplumber.open(caminho_pdf) as pdf:
@@ -142,8 +146,11 @@ def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubric
         for bloco in partes_texto:
             if not bloco.strip(): continue
             match_emp, match_cpf = padrao_emp.search(bloco), padrao_cpf.search(bloco)
-            if not match_emp or not match_cpf: continue
-            emp_id, cpf = match_emp.group(1).strip(), match_cpf.group(1).strip()
+            if not match_cpf: continue
+            
+            emp_id = override_empresa if override_empresa else (match_emp.group(1).strip() if match_emp else "1")
+            cpf = match_cpf.group(1).strip()
+            
             match_base = padrao_base_irrf.search(bloco)
             base_irrf = match_base.group(1).strip() if match_base else "0,00"
             linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
@@ -162,12 +169,12 @@ def extrair_dados_extrato_dominio(caminho_pdf, codigo_empresa="1", codigo_rubric
                 })
         df = pd.DataFrame(dados_funcionarios)
         if df.empty:
-            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Domínio")
+            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Domínio", override_empresa)
         return df
     except Exception:
-        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Domínio")
+        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Domínio", override_empresa)
 
-def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia="", override_empresa=None):
     try:
         dados_funcionarios = []
         with pdfplumber.open(caminho_pdf) as pdf:
@@ -179,8 +186,9 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
         for bloco in partes_texto:
             if not bloco.strip(): continue
             match_cod = padrao_cod.search(bloco)
-            if not match_cod: continue
-            emp_id = match_cod.group(1).strip()
+            if not match_cod and not override_empresa: continue
+            
+            emp_id = override_empresa if override_empresa else match_cod.group(1).strip()
             match_base = padrao_base_irrf.search(bloco)
             base_irrf = match_base.group(1).strip() if match_base else "0,00"
             linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
@@ -202,12 +210,12 @@ def extrair_dados_extrato_contmatic(caminho_pdf, codigo_empresa="1", codigo_rubr
                 })
         df = pd.DataFrame(dados_funcionarios)
         if df.empty:
-            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Contmatic")
+            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Contmatic", override_empresa)
         return df
     except Exception:
-        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Contmatic")
+        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Contmatic", override_empresa)
 
-def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia="", override_empresa=None):
     try:
         dados_funcionarios = []
         with pdfplumber.open(caminho_pdf) as pdf:
@@ -219,14 +227,16 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
         for bloco in partes_bloco:
             if not bloco.strip(): continue
             match_emp_cpf = padrao_empregado_cpf.search(bloco)
-            if not match_emp_cpf: continue
-            emp_id = match_emp_cpf.group(1).strip()
-            cpf = match_emp_cpf.group(2).strip()
+            if not match_emp_cpf and not override_empresa: continue
+            
+            emp_id = override_empresa if override_empresa else match_emp_cpf.group(1).strip()
+            cpf = match_emp_cpf.group(2).strip() if match_emp_cpf else "000.000.000-00"
+            
             linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
             nome = "Funcionário"
             for linha in linhas:
-                if emp_id in linha and cpf in linha:
-                    resto = linha.replace(emp_id, "").replace(cpf, "").strip()
+                if cpf in linha:
+                    resto = linha.replace(cpf, "").strip()
                     if len(resto) > 2:
                         nome = resto
                         break
@@ -242,12 +252,12 @@ def extrair_dados_extrato_alterdata(caminho_pdf, codigo_empresa="1", codigo_rubr
                 })
         df = pd.DataFrame(dados_funcionarios)
         if df.empty:
-            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Alterdata")
+            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Alterdata", override_empresa)
         return df
     except Exception:
-        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Alterdata")
+        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Alterdata", override_empresa)
 
-def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia="", override_empresa=None):
     try:
         dados_funcionarios = []
         with pdfplumber.open(caminho_pdf) as pdf:
@@ -261,28 +271,24 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
         while i < len(linhas):
             linha = linhas[i]
             
-            # Captura estritamente a linha que possui "Admitido em" para o funcionário
             if "ADMITIDO EM" in linha.upper():
                 match_func = re.search(r"^(\d+)\s+(.+?)\s+Admitido em", linha, re.IGNORECASE)
-                if match_func:
-                    emp_id = match_func.group(1).strip()
-                    nome_func = match_func.group(2).strip()
+                if match_func or override_empresa:
+                    emp_id = override_empresa if override_empresa else match_func.group(1).strip()
+                    nome_func = match_func.group(2).strip() if match_func else linha.split("Admitido em")[0].strip()
                     nome_func = re.sub(r"\s+\d+\s*\d*$", "", nome_func).strip()
                     
-                    # Varre as linhas seguintes buscando o campo "IR ->" para extrair estritamente o valor à frente dele
                     base_irrf = "0,00"
                     j = i
                     while j < len(linhas) and (j == i or "ADMITIDO EM" not in linhas[j].upper()):
                         linha_atual = linhas[j]
                         if "IR ->" in linha_atual.upper():
-                            # Procura especificamente o valor monetário que vem após "IR ->"
                             partes_ir = linha_atual.upper().split("IR ->")
                             if len(partes_ir) > 1:
                                 val_match = re.findall(r"([\d\.]+,\d{2})", partes_ir[1])
                                 if val_match:
                                     base_irrf = val_match[0]
                                     break
-                            # Caso venha na linha seguinte após o "IR ->" isolado
                             elif j + 1 < len(linhas):
                                 val_match_prox = re.findall(r"([\d\.]+,\d{2})", linhas[j+1])
                                 if val_match_prox:
@@ -290,7 +296,7 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
                                     break
                         j += 1
                         
-                    if not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
+                    if not any(d.get('Código Empregado') == emp_id and d.get('Base IRRF') == base_irrf for d in dados_funcionarios):
                         dados_funcionarios.append({
                             "Empresa": str(codigo_empresa).strip(),
                             "Código Empregado": emp_id,
@@ -304,19 +310,19 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
 
         df = pd.DataFrame(dados_funcionarios)
         if df.empty:
-            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "SCI")
+            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "SCI", override_empresa)
         return df
     except Exception:
-        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "SCI")
+        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "SCI", override_empresa)
 
-def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia="", override_empresa=None):
     try:
         dados_funcionarios = []
         with pdfplumber.open(caminho_pdf) as pdf:
             texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
         if not texto_completo.strip(): return pd.DataFrame()
         linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
-        emp_id, nome, base_irrf = None, "Funcionário", "0,00"
+        emp_id, nome, base_irrf = override_empresa, "Funcionário", "0,00"
         padrao_codigo_nome = re.compile(r"^(\d+)-([A-ZÀ-Ú\s]+)", re.IGNORECASE)
         padrao_base_irrf_prosol = re.compile(r"0105\s+BASE\s+DE\s+CALCULO\s+I\.R\.R\.F\.?", re.IGNORECASE)
         padrao_valor = re.compile(r"([\d\.]+,\d{2})")
@@ -325,7 +331,8 @@ def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica
             linha = linhas[i]
             match_cod_nome = padrao_codigo_nome.search(linha)
             if match_cod_nome:
-                emp_id = match_cod_nome.group(1).strip()
+                if not override_empresa:
+                    emp_id = match_cod_nome.group(1).strip()
                 nome = match_cod_nome.group(2).strip()
                 base_irrf = "0,00"
             if padrao_base_irrf_prosol.search(linha):
@@ -343,12 +350,12 @@ def extrair_dados_extrato_prosol(caminho_pdf, codigo_empresa="1", codigo_rubrica
             i += 1
         df = pd.DataFrame(dados_funcionarios)
         if df.empty:
-            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Prosol")
+            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Prosol", override_empresa)
         return df
     except Exception:
-        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Prosol")
+        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Prosol", override_empresa)
 
-def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia="", override_empresa=None):
     try:
         dados_funcionarios = []
         with pdfplumber.open(caminho_pdf) as pdf:
@@ -360,9 +367,11 @@ def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubric
         for bloco in partes_texto:
             if not bloco.strip(): continue
             match_func = padrao_func.search(bloco)
-            if not match_func: continue
-            emp_id = match_func.group(1).strip()
-            nome = match_func.group(2).strip()
+            if not match_func and not override_empresa: continue
+            
+            emp_id = override_empresa if override_empresa else match_func.group(1).strip()
+            nome = match_func.group(2).strip() if match_func else "Funcionário"
+            
             match_base = padrao_base_impostos_irrf.search(bloco)
             base_irrf = match_base.group(1).strip() if match_base else "0,00"
             if emp_id and not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
@@ -373,12 +382,12 @@ def extrair_dados_extrato_questor(caminho_pdf, codigo_empresa="1", codigo_rubric
                 })
         df = pd.DataFrame(dados_funcionarios)
         if df.empty:
-            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Questor")
+            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Questor", override_empresa)
         return df
     except Exception:
-        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Questor")
+        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Questor", override_empresa)
 
-def extrair_dados_extrato_cucafresca(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+def extrair_dados_extrato_cucafresca(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia="", override_empresa=None):
     try:
         dados_funcionarios = []
         with pdfplumber.open(caminho_pdf) as pdf:
@@ -390,9 +399,11 @@ def extrair_dados_extrato_cucafresca(caminho_pdf, codigo_empresa="1", codigo_rub
         for bloco in partes_texto:
             if not bloco.strip(): continue
             match_emp_nome = padrao_emp_nome.search(bloco)
-            if not match_emp_nome: continue
-            emp_id = match_emp_nome.group(1).strip()
-            nome = match_emp_nome.group(2).strip()
+            if not match_emp_nome and not override_empresa: continue
+            
+            emp_id = override_empresa if override_empresa else match_emp_nome.group(1).strip()
+            nome = match_emp_nome.group(2).strip() if match_emp_nome else "Funcionário"
+            
             match_cpf = padrao_cpf.search(bloco)
             cpf = match_cpf.group(1).strip() if match_cpf else "N/D (Cuca Fresca)"
             base_irrf = "0,00"
@@ -420,10 +431,10 @@ def extrair_dados_extrato_cucafresca(caminho_pdf, codigo_empresa="1", codigo_rub
                 })
         df = pd.DataFrame(dados_funcionarios)
         if df.empty:
-            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Cuca Fresca")
+            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Cuca Fresca", override_empresa)
         return df
     except Exception:
-        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Cuca Fresca")
+        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Cuca Fresca", override_empresa)
 
 def gerar_linha_posicional(row):
     f_fixo = "10"
@@ -447,6 +458,13 @@ with st.sidebar:
     codigo_empresa_input = st.text_input("🔢 Código da Empresa:", value="1")
     codigo_rubrica = st.text_input("🏷️ Código da Rubrica (TXT):", value="2000")
     competencia_input = st.text_input("📅 Competência (MM/AAAA):", value="09/2026")
+    
+    st.markdown("---")
+    st.markdown("### 🛠️ Ajuste Manual (Opcional)")
+    habilitar_override = st.checkbox("Forçar Código de Empregado Manual")
+    codigo_empregado_manual = ""
+    if habilitar_override:
+        codigo_empregado_manual = st.text_input("👤 Novo Código de Empregado:", value="")
 
 # --- Interface Principal ---
 st.title("⚡ Extrator Inteligente de Base IRRF")
@@ -459,6 +477,8 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
     todos_dados = []
+    override_val = codigo_empregado_manual.strip() if (habilitar_override and codigo_empregado_manual.strip()) else None
+    
     with st.spinner("Processando arquivos com inteligência de leiaute... Por favor, aguarde ⏳"):
         for arquivo in arquivos_pdf:
             caminho_temp = os.path.join("temp", arquivo.name)
@@ -467,19 +487,19 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
                 f.write(arquivo.getbuffer())
                 
             if "Questor" in sistema_cliente:
-                df_extrato = extrair_dados_extrato_questor(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+                df_extrato = extrair_dados_extrato_questor(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input, override_val)
             elif "Domínio" in sistema_cliente:
-                df_extrato = extrair_dados_extrato_dominio(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+                df_extrato = extrair_dados_extrato_dominio(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input, override_val)
             elif "Contmatic" in sistema_cliente:
-                df_extrato = extrair_dados_extrato_contmatic(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+                df_extrato = extrair_dados_extrato_contmatic(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input, override_val)
             elif "Alterdata" in sistema_cliente:
-                df_extrato = extrair_dados_extrato_alterdata(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+                df_extrato = extrair_dados_extrato_alterdata(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input, override_val)
             elif "SCI" in sistema_cliente:
-                df_extrato = extrair_dados_extrato_sci(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+                df_extrato = extrair_dados_extrato_sci(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input, override_val)
             elif "Prosol" in sistema_cliente:
-                df_extrato = extrair_dados_extrato_prosol(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+                df_extrato = extrair_dados_extrato_prosol(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input, override_val)
             elif "Cuca Fresca" in sistema_cliente:
-                df_extrato = extrair_dados_extrato_cucafresca(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+                df_extrato = extrair_dados_extrato_cucafresca(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input, override_val)
             else:
                 df_extrato = pd.DataFrame()
                 
