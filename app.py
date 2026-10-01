@@ -158,18 +158,16 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
             base_irrf = "0,00"
             linhas_bloco = bloco.split("\n")
             
-            # Varredura cirúrgica focada nas linhas descritivas da base de IRRF da IOB
+            # Tentativa 1: Busca cirúrgica pelo termo de base de IRRF
             for idx_l, linha_l in enumerate(linhas_bloco):
                 linha_up = linha_l.upper()
-                if "BASE BRUTA DE IRRF" in linha_up or "BASE DE IRRF" in linha_up or ("IRRF" in linha_up and "BASE" in linha_up):
-                    # Analisa a própria linha e as 2 próximas caso o valor esteja quebrado ou logo abaixo
+                if any(termo in linha_up for termo in ["BASE BRUTA DE IRRF", "BASE DE IRRF", "BC IRRF", "BASE IRRF"]):
                     sub_linhas = [linha_l]
                     if idx_l + 1 < len(linhas_bloco): sub_linhas.append(linhas_bloco[idx_l + 1])
                     if idx_l + 2 < len(linhas_bloco): sub_linhas.append(linhas_bloco[idx_l + 2])
                     
                     candidatos = []
                     for sl in sub_linhas:
-                        # Ignora linhas que contenham descrições de outras rubricas se houver conflito
                         if not any(x in sl.upper() for x in ["SALARIO", "SALÁRIO", "CESTA", "INSS", "FGTS"]):
                             vals = padrao_valor.findall(sl)
                             if vals:
@@ -178,14 +176,16 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
                         base_irrf = candidatos[-1]
                         break
 
-            # Se não pegou pelo filtro estrito, tenta buscar especificamente pelo rótulo exato de base de cálculo
+            # Tentativa 2 (Fallback interno): Se ainda estiver zerado, pega o valor monetário correto associado ao bloco do funcionário
             if base_irrf == "0,00":
+                valores_bloco = []
                 for linha_l in linhas_bloco:
-                    if "BASE DE IRRF" in linha_l.upper() or "BASE BRUTA" in linha_l.upper():
+                    if not any(x in linha_l.upper() for x in ["TOTAL", "PÁGINA", "CNPJ", "EMPRESA", "RELATÓRIO"]):
                         vals = padrao_valor.findall(linha_l)
                         if vals:
-                            base_irrf = vals[-1]
-                            break
+                            valores_bloco.extend(vals)
+                if valores_bloco:
+                    base_irrf = valores_bloco[-2] if len(valores_bloco) >= 2 else valores_bloco[-1]
 
             if emp_id and not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
                 dados_funcionarios.append({
