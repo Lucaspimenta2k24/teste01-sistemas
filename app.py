@@ -137,8 +137,12 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
         if not texto_completo.strip(): 
             return pd.DataFrame()
 
-        partes_texto = re.split(r"(?=Funcionário:)", texto_completo, flags=re.IGNORECASE)
-        padrao_func = re.compile(r"Funcionário:\s*(\d+)\s*(?:-\s*)?([A-ZÀ-Ú\s]+)", re.IGNORECASE)
+        # Ajuste robusto para quebrar os blocos por funcionário no leiaute IOB
+        partes_texto = re.split(r"(?=Funcionário:\s*\d+)", texto_completo, flags=re.IGNORECASE)
+        padrao_func = re.compile(r"Funcionário:\s*(\d+)\s*(?:-|[A-ZÀ-Ú\s]+)?([A-ZÀ-Ú\s]+)", re.IGNORECASE)
+        
+        # Regex atualizada para capturar o valor ignorando quebras de linha e caracteres de formatação da tabela do PDF
+        padrao_base_bruta = re.compile(r"Base\s*Bruta\s*de\s*IRRF\s*:\s*(?:\|?\s*)*([\d\.]+,\d{2})", re.IGNORECASE)
 
         for bloco in partes_texto:
             if not bloco.strip(): 
@@ -151,23 +155,23 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
                 continue
             
             emp_id = match_func.group(1).strip()
-            nome_completo = match_func.group(2).split("Adm:")[0].split("Função:")[0].strip()
+            
+            # Extração limpa do nome do funcionário
+            linha_func = bloco.split('\n')[0] if '\n' in bloco else bloco
+            if '-' in linha_func:
+                partes_nome = linha_func.split('-')
+                if len(partes_nome) >= 2:
+                    nome_completo = partes_nome[1].split("Adm:")[0].split("Função:")[0].strip()
+                else:
+                    nome_completo = "Funcionário"
+            else:
+                nome_completo = "Funcionário"
             nome_limpo = " ".join(nome_completo.split())
 
             base_irrf = "0,00"
-            linhas_bloco = [l.strip() for l in bloco.split("\n") if l.strip()]
-            
-            for i, linha in enumerate(linhas_bloco):
-                if "BASE BRUTA DE IRRF" in linha.upper() or "BASE BRUTA DE IRRF:" in linha.upper():
-                    valores_linha = re.findall(r"([\d\.]+,\d{2})", linha)
-                    if valores_linha:
-                        base_irrf = valores_linha[0]
-                        break
-                    elif i + 1 < len(linhas_bloco):
-                        valores_prox = re.findall(r"([\d\.]+,\d{2})", linhas_bloco[i+1])
-                        if valores_prox:
-                            base_irrf = valores_prox[0]
-                            break
+            match_base = padrao_base_bruta.search(bloco)
+            if match_base:
+                base_irrf = match_base.group(1).strip()
 
             if emp_id and not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
                 dados_funcionarios.append({
@@ -181,7 +185,7 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
                 })
 
         df = pd.DataFrame(dados_funcionarios)
-        if df.empty or (df["Base IRRF"] == "0,00").all():
+        if df.empty:
             return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "IOB")
         return df
     except Exception:
