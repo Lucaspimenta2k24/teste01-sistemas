@@ -40,7 +40,7 @@ st.markdown("""
         width: 100%;
     }
     .stButton>button:hover {
-        background: linear-gradient(135deg, #00b386 0%, #008060 100%);
+        background: linear-gradient(135deg, #00b386 100%, #008060 100%);
         box-shadow: 0 6px 20px rgba(0, 255, 204, 0.6);
         transform: translateY(-2px);
     }
@@ -139,7 +139,8 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
 
         partes_texto = re.split(r"(?=Funcionário:)", texto_completo, flags=re.IGNORECASE)
         padrao_func = re.compile(r"Funcionário:\s*(\d+)\s*(?:-\s*)?([A-ZÀ-Ú\s]+)", re.IGNORECASE)
-        padrao_valor = re.compile(r"([\d\.]+,\d{2})")
+        # Regex blindada para buscar exatamente o valor logo após o rótulo "Base Bruta de IRRF:"
+        padrao_base_bruta = re.compile(r"Base\s*Bruta\s*de\s*IRRF\s*:\s*([\d\.]+,\d{2})", re.IGNORECASE)
 
         for bloco in partes_texto:
             if not bloco.strip(): 
@@ -156,36 +157,9 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
             nome_limpo = " ".join(nome_completo.split())
 
             base_irrf = "0,00"
-            linhas_bloco = bloco.split("\n")
-            
-            # Tentativa 1: Busca cirúrgica pelo termo de base de IRRF
-            for idx_l, linha_l in enumerate(linhas_bloco):
-                linha_up = linha_l.upper()
-                if any(termo in linha_up for termo in ["BASE BRUTA DE IRRF", "BASE DE IRRF", "BC IRRF", "BASE IRRF"]):
-                    sub_linhas = [linha_l]
-                    if idx_l + 1 < len(linhas_bloco): sub_linhas.append(linhas_bloco[idx_l + 1])
-                    if idx_l + 2 < len(linhas_bloco): sub_linhas.append(linhas_bloco[idx_l + 2])
-                    
-                    candidatos = []
-                    for sl in sub_linhas:
-                        if not any(x in sl.upper() for x in ["SALARIO", "SALÁRIO", "CESTA", "INSS", "FGTS"]):
-                            vals = padrao_valor.findall(sl)
-                            if vals:
-                                candidatos.extend(vals)
-                    if candidatos:
-                        base_irrf = candidatos[-1]
-                        break
-
-            # Tentativa 2 (Fallback interno): Se ainda estiver zerado, pega o valor monetário correto associado ao bloco do funcionário
-            if base_irrf == "0,00":
-                valores_bloco = []
-                for linha_l in linhas_bloco:
-                    if not any(x in linha_l.upper() for x in ["TOTAL", "PÁGINA", "CNPJ", "EMPRESA", "RELATÓRIO"]):
-                        vals = padrao_valor.findall(linha_l)
-                        if vals:
-                            valores_bloco.extend(vals)
-                if valores_bloco:
-                    base_irrf = valores_bloco[-2] if len(valores_bloco) >= 2 else valores_bloco[-1]
+            match_base = padrao_base_bruta.search(bloco)
+            if match_base:
+                base_irrf = match_base.group(1).strip()
 
             if emp_id and not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
                 dados_funcionarios.append({
