@@ -139,8 +139,8 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
 
         partes_texto = re.split(r"(?=Funcionário:)", texto_completo, flags=re.IGNORECASE)
         
-        padrao_func = re.compile(r"Funcionário:\s*(\d+)\s*-\s*([A-ZÀ-Ú\s]+)|Funcionário:\s*(\d+)([A-ZÀ-Ú\s]+)", re.IGNORECASE)
-        padrao_func_colado = re.compile(r"Funcionário:\s*(\d+)([A-ZÀ-Ú\s]+)", re.IGNORECASE)
+        # Regex robusta para capturar o ID e o nome do funcionário corretamente
+        padrao_func = re.compile(r"Funcionário:\s*(\d+)\s*(?:-\s*)?([A-ZÀ-Ú\s]+)", re.IGNORECASE)
         
         # Regex robusta para capturar o valor logo após "Base Bruta de IRRF:" considerando possíveis quebras ou espaços
         padrao_base_bruta_irrf = re.compile(r"Base\s+Bruta\s+de\s+IRRF\s*:\s*([\d\.]+,\d{2})", re.IGNORECASE | re.DOTALL)
@@ -151,15 +151,12 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
             if "TOTAL GERAL" in bloco.upper() or "TOTALIZAÇÃO DA FOLHA" in bloco.upper():
                 continue
             
-            match_func = padrao_func_colado.search(bloco)
-            if not match_func:
-                match_func = padrao_func.search(bloco)
-            
+            match_func = padrao_func.search(bloco)
             if not match_func: 
                 continue
             
             emp_id = match_func.group(1).strip()
-            nome_completo = match_func.group(2).strip()
+            nome_completo = match_func.group(2).split("Adm:")[0].split("Função:")[0].strip()
             nome_limpo = " ".join(nome_completo.split())
 
             match_base = padrao_base_bruta_irrf.search(bloco)
