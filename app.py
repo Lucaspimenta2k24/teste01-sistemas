@@ -129,6 +129,72 @@ def extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, com
                 
     return pd.DataFrame(dados_funcionarios)
 
+def extrair_dados_extrato_exactus(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
+    try:
+        dados_funcionarios = []
+        with pdfplumber.open(caminho_pdf) as pdf:
+            texto_completo = "".join([p.extract_text() + "\n" for p in pdf.pages if p.extract_text()])
+        if not texto_completo.strip(): 
+            return pd.DataFrame()
+
+        # O leiaute da Exactus divide os blocos por colaborador iniciando com o código seguido de hífen e nome (ex: 10152.001 - ANDREIA BREDA)
+        partes_texto = re.split(r"(?=\d{4,5}\.\d{3}\s*-)", texto_completo)
+        padrao_cabecalho = re.compile(r"^(\d{4,5}\.\d{3})\s*-\s*(.+)", re.IGNORECASE)
+        padrao_cpf = re.compile(r"CPF\s*(\d{3}\.\d{3}\.\d{3}-\d{2})", re.IGNORECASE)
+
+        for bloco in partes_texto:
+            if not bloco.strip(): 
+                continue
+            if "TOTAL GERAL" in bloco.upper() or "RESUMO TRIBUTÁRIO" in bloco.upper():
+                continue
+            
+            linhas = [l.strip() for l in bloco.split("\n") if l.strip()]
+            if not linhas:
+                continue
+
+            match_cab = padrao_cabecalho.search(linhas[0])
+            if not match_cab:
+                continue
+
+            emp_id = match_cab.group(1).strip()
+            nome_func = match_cab.group(2).strip()
+
+            match_cpf = padrao_cpf.search(bloco)
+            cpf = match_cpf.group(1).strip() if match_cpf else "N/D (Exactus)"
+
+            # Captura específica da Base de IRRF descrita como "IRRF R.M."
+            base_irrf = "0,00"
+            for i, linha in enumerate(linhas):
+                if "IRRF R.M." in linha.upper():
+                    # Procura valores monetários na mesma linha ou na linha imediatamente abaixo
+                    valores_linha = re.findall(r"([\d\.]+,\d{2})", linha)
+                    if valores_linha:
+                        base_irrf = valores_linha[0]
+                        break
+                    elif i + 1 < len(linhas):
+                        valores_prox = re.findall(r"([\d\.]+,\d{2})", linhas[i + 1])
+                        if valores_prox:
+                            base_irrf = valores_prox[0]
+                            break
+
+            if emp_id and not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
+                dados_funcionarios.append({
+                    "Empresa": str(codigo_empresa).strip(),
+                    "Código Empregado": emp_id,
+                    "Funcionário": nome_func[:40],
+                    "CPF": cpf,
+                    "Competência": competencia.strip(),
+                    "Base IRRF": base_irrf,
+                    "Código Rubrica": str(codigo_rubrica).strip()
+                })
+
+        df = pd.DataFrame(dados_funcionarios)
+        if df.empty:
+            return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Exactus")
+        return df
+    except Exception:
+        return extrator_fallback_universal(caminho_pdf, codigo_empresa, codigo_rubrica, competencia, "Exactus")
+
 def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2000", competencia=""):
     try:
         dados_funcionarios = []
@@ -151,7 +217,6 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
                 continue
             
             emp_id = match_func.group(1).strip()
-            
             linha_func = bloco.split('\n')[0] if '\n' in bloco else bloco
             if '-' in linha_func:
                 partes_nome = linha_func.split('-')
@@ -163,7 +228,6 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
                 nome_completo = "Funcionário"
             nome_limpo = " ".join(nome_completo.split())
 
-            # Lógica aprimorada e robusta para capturar a Base Bruta de IRRF (capturando Edna, Tania, etc.)
             base_irrf = "0,00"
             pos_base = bloco.find("Base Bruta de IRRF")
             if pos_base != -1:
@@ -323,11 +387,9 @@ def extrair_dados_extrato_sci(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
             return pd.DataFrame()
 
         linhas = [l.strip() for l in texto_completo.split("\n") if l.strip()]
-        
         i = 0
         while i < len(linhas):
             linha = linhas[i]
-            
             if "ADMITIDO EM" in linha.upper():
                 match_func = re.search(r"^(\d+)\s+(.+?)\s+Admitido em", linha, re.IGNORECASE)
                 if match_func:
@@ -508,7 +570,7 @@ with st.sidebar:
     st.markdown("### ⚙️ Painel de Controle")
     sistema_cliente = st.selectbox(
         "🏢 Sistema / Leiaute:",
-        ["Questor", "Domínio (Thomson Reuters)", "Contmatic Phoenix", "Alterdata", "SCI Contábil", "Prosol", "Cuca Fresca", "IOB"]
+        ["Questor", "Domínio (Thomson Reuters)", "Contmatic Phoenix", "Alterdata", "SCI Contábil", "Prosol", "Cuca Fresca", "Exactus", "IOB"]
     )
     st.markdown("---")
     codigo_empresa_input = st.text_input("🔢 Código da Empresa:", value="1")
@@ -551,6 +613,8 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
                 df_extrato = extrair_dados_extrato_prosol(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
             elif "Cuca Fresca" in sistema_cliente:
                 df_extrato = extrair_dados_extrato_cucafresca(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
+            elif "Exactus" in sistema_cliente:
+                df_extrato = extrair_dados_extrato_exactus(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
             elif "IOB" in sistema_cliente:
                 df_extrato = extrair_dados_extrato_iob(caminho_temp, codigo_empresa_input, codigo_rubrica, competencia_input)
             else:
@@ -569,7 +633,7 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
         else:
             st.session_state.df_editado = df_bruto
     else:
-        st.warning("⚠️️ Nenhum dado válido foi encontrado nos arquivos enviados. Certifique-se de que os PDFs contêm texto selecionável (e não são imagens digitalizadas/scaneadas).")
+        st.warning("⚠ Nenhum dado válido foi encontrado nos arquivos enviados. Certifique-se de que os PDFs contêm texto selecionável (e não são imagens digitalizadas/scaneadas).")
         st.session_state.df_editado = None
 
 # Exibição da tabela e central de downloads baseada no session_state
@@ -578,7 +642,6 @@ if st.session_state.df_editado is not None and not st.session_state.df_editado.e
     st.markdown("### 📊 Prévia dos Dados Extraídos")
     st.info("💡 **Dica:** Você pode alterar o **Código Empregado** ou qualquer outra informação clicando diretamente nas células da tabela abaixo antes de baixar os arquivos!")
     
-    # O data_editor agora atualiza o session_state sem perder o estado da tela ao editar campos
     df_final = st.data_editor(st.session_state.df_editado, use_container_width=True, num_rows="dynamic", key="editor_dados")
     
     output_csv = "extrato_irrf_consolidado.csv"
