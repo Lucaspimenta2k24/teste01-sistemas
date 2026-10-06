@@ -161,14 +161,11 @@ def extrair_dados_extrato_exactus(caminho_pdf, codigo_empresa="1", codigo_rubric
             match_cpf = padrao_cpf.search(bloco)
             cpf = match_cpf.group(1).strip() if match_cpf else "N/D (Exactus)"
 
-            # Varredura refinada para encontrar a linha "IRRF R.M." e capturar o valor associado (ex: 1.984,27)
             base_irrf = "0,00"
             for i, linha in enumerate(linhas):
                 if "IRRF R.M." in linha.upper():
-                    # Procura todos os valores monetários na linha do IRRF R.M. ou logo abaixo
                     valores_linha = re.findall(r"([\d\.]+,\d{2})", linha)
                     if valores_linha:
-                        # Pega o último valor numérico da linha de IRRF R.M. (geralmente o valor da base/rendimento)
                         base_irrf = valores_linha[-1]
                         break
                     elif i + 1 < len(linhas):
@@ -228,13 +225,25 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
                 nome_completo = "Funcionário"
             nome_limpo = " ".join(nome_completo.split())
 
+            # Varredura refinada para capturar o valor da "Base Bruta de IRRF"
             base_irrf = "0,00"
-            pos_base = bloco.find("Base Bruta de IRRF")
-            if pos_base != -1:
-                trecho_apos = bloco[pos_base:]
-                match_val = re.search(r"([\d\.]+,\d{2})", trecho_apos)
-                if match_val:
-                    base_irrf = match_val.group(1)
+            linhas_bloco = [l.strip() for l in bloco.split("\n") if l.strip()]
+            for linha in linhas_bloco:
+                if "BASE BRUTA DE IRRF" in linha.upper():
+                    partes_label = re.split(r"Base\s+Bruta\s+de\s+IRRF[:\s]*", linha, flags=re.IGNORECASE)
+                    if len(partes_label) > 1:
+                        val_match = re.search(r"([\d\.]+,\d{2})", partes_label[1])
+                        if val_match:
+                            base_irrf = val_match.group(1)
+                            break
+            
+            if base_irrf == "0,00":
+                pos_base = bloco.find("Base Bruta de IRRF")
+                if pos_base != -1:
+                    trecho_apos = bloco[pos_base:]
+                    match_val = re.search(r"([\d\.]+,\d{2})", trecho_apos)
+                    if match_val:
+                        base_irrf = match_val.group(1)
 
             if emp_id and not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
                 dados_funcionarios.append({
@@ -633,30 +642,4 @@ if arquivos_pdf and st.button("🚀 Processar Extratos e Gerar Arquivos"):
         else:
             st.session_state.df_editado = df_bruto
     else:
-        st.warning("⚠ Nenhum dado válido foi encontrado nos arquivos enviados. Certifique-se de que os PDFs contêm texto selecionável (e não são imagens digitalizadas/scaneadas).")
-        st.session_state.df_editado = None
-
-# Exibição da tabela e central de downloads baseada no session_state
-if st.session_state.df_editado is not None and not st.session_state.df_editado.empty:
-    st.success(f"🎉 Processamento concluído com sucesso! {len(st.session_state.df_editado)} registros mapeados.")
-    st.markdown("### 📊 Prévia dos Dados Extraídos")
-    st.info("💡 **Dica:** Você pode alterar o **Código Empregado** ou qualquer outra informação clicando diretamente nas células da tabela abaixo antes de baixar os arquivos!")
-    
-    df_final = st.data_editor(st.session_state.df_editado, use_container_width=True, num_rows="dynamic", key="editor_dados")
-    
-    output_csv = "extrato_irrf_consolidado.csv"
-    df_final.to_csv(output_csv, index=False, sep=";", encoding="utf-8-sig")
-    
-    output_txt = "importacao_irrf.txt"
-    with open(output_txt, "w", encoding="utf-8") as f:
-        for _, row in df_final.iterrows():
-            f.write(gerar_linha_posicional(row))
-
-    st.markdown("### 📥 Central de Downloads")
-    col_dl1, col_dl2 = st.columns(2)
-    with col_dl1:
-        with open(output_csv, "rb") as f:
-            st.download_button("📥 Baixar Planilha de Conferência (CSV)", data=f, file_name=output_csv, mime="text/csv")
-    with col_dl2:
-        with open(output_txt, "r", encoding="utf-8") as f:
-            st.download_button("📄 Baixar TXT Posicional (Leiaute)", data=f, file_name=output_txt, mime="text/plain")
+        st.warning
