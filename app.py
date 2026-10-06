@@ -137,7 +137,6 @@ def extrair_dados_extrato_exactus(caminho_pdf, codigo_empresa="1", codigo_rubric
         if not texto_completo.strip(): 
             return pd.DataFrame()
 
-        # O leiaute da Exactus divide os blocos por colaborador iniciando com o código seguido de hífen e nome (ex: 10152.001 - ANDREIA BREDA)
         partes_texto = re.split(r"(?=\d{4,5}\.\d{3}\s*-)", texto_completo)
         padrao_cabecalho = re.compile(r"^(\d{4,5}\.\d{3})\s*-\s*(.+)", re.IGNORECASE)
         padrao_cpf = re.compile(r"CPF\s*(\d{3}\.\d{3}\.\d{3}-\d{2})", re.IGNORECASE)
@@ -162,19 +161,20 @@ def extrair_dados_extrato_exactus(caminho_pdf, codigo_empresa="1", codigo_rubric
             match_cpf = padrao_cpf.search(bloco)
             cpf = match_cpf.group(1).strip() if match_cpf else "N/D (Exactus)"
 
-            # Captura específica da Base de IRRF descrita como "IRRF R.M."
+            # Varredura refinada para encontrar a linha "IRRF R.M." e capturar o valor associado (ex: 1.984,27)
             base_irrf = "0,00"
             for i, linha in enumerate(linhas):
                 if "IRRF R.M." in linha.upper():
-                    # Procura valores monetários na mesma linha ou na linha imediatamente abaixo
+                    # Procura todos os valores monetários na linha do IRRF R.M. ou logo abaixo
                     valores_linha = re.findall(r"([\d\.]+,\d{2})", linha)
                     if valores_linha:
-                        base_irrf = valores_linha[0]
+                        # Pega o último valor numérico da linha de IRRF R.M. (geralmente o valor da base/rendimento)
+                        base_irrf = valores_linha[-1]
                         break
                     elif i + 1 < len(linhas):
                         valores_prox = re.findall(r"([\d\.]+,\d{2})", linhas[i + 1])
                         if valores_prox:
-                            base_irrf = valores_prox[0]
+                            base_irrf = valores_prox[-1]
                             break
 
             if emp_id and not any(d.get('Código Empregado') == emp_id for d in dados_funcionarios):
