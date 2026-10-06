@@ -200,53 +200,34 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
         if not texto_completo.strip(): 
             return pd.DataFrame()
 
-        linhas = texto_completo.split('\n')
-        funcionario_atual = None
-        emp_id = None
-        bloco_atual = ""
-
-        def processar_bloco_iob(nome_func, id_emp, texto_bloco):
-            if not id_emp or not nome_func:
-                return
-
-            match_base_irrf = re.search(r"Base\s+Bruta\s+de\s+IRRF\s*:\s*([\d\.]+,\d{2})", texto_bloco, re.IGNORECASE)
+        padrao_func_bloco = re.compile(r"Funcionário:\s*(\d+)\s*-\s*([^\n]+)", re.IGNORECASE)
+        posicoes = list(padrao_func_bloco.finditer(texto_completo))
+        
+        for idx, match in enumerate(posicoes):
+            emp_id = match.group(1).strip()
+            nome_completo = match.group(2).split("Adm:")[0].split("Função:")[0].strip()
+            nome_func = " ".join(nome_completo.split())
+            
+            inicio_bloco = match.start()
+            fim_bloco = posicoes[idx + 1].start() if idx + 1 < len(posicoes) else len(texto_completo)
+            bloco_texto = texto_completo[inicio_bloco:fim_bloco]
+            
+            match_base_irrf = re.search(r"Base\s+Bruta\s+de\s+IRRF\s*:\s*([\d\.]+,\d{2})", bloco_texto, re.IGNORECASE)
             if not match_base_irrf:
-                match_base_irrf = re.search(r"BASE\s+BRUTA\s+DE\s+IRRF.*?([\d\.]+,\d{2})", texto_bloco, re.IGNORECASE | re.DOTALL)
+                match_base_irrf = re.search(r"BASE\s+BRUTA\s+DE\s+IRRF.*?([\d\.]+,\d{2})", bloco_texto, re.IGNORECASE | re.DOTALL)
             
             base_irrf = match_base_irrf.group(1) if match_base_irrf else "0,00"
             
-            if not any(d.get('Código Empregado') == id_emp and d.get('Base IRRF') == base_irrf for d in dados_funcionarios):
+            if emp_id and nome_func and not any(d.get('Código Empregado') == emp_id and d.get('Base IRRF') == base_irrf for d in dados_funcionarios):
                 dados_funcionarios.append({
                     "Empresa": str(codigo_empresa).strip(),
-                    "Código Empregado": id_emp,
+                    "Código Empregado": emp_id,
                     "Funcionário": nome_func[:40],
                     "CPF": "N/D (IOB)",
                     "Competência": competencia.strip(),
                     "Base IRRF": base_irrf,
                     "Código Rubrica": str(codigo_rubrica).strip()
                 })
-
-        for linha in linhas:
-            if "Funcionário:" in linha:
-                if bloco_atual.strip() and emp_id:
-                    processar_bloco_iob(funcionario_atual, emp_id, bloco_atual)
-                
-                match_func = re.search(r"Funcionário:\s*(\d+)\s*-\s*(.+)", linha, re.IGNORECASE)
-                if match_func:
-                    emp_id = match_func.group(1).strip()
-                    nome_completo = match_func.group(2).split("Adm:")[0].split("Função:")[0].strip()
-                    funcionario_atual = " ".join(nome_completo.split())
-                    bloco_atual = linha + "\n"
-                else:
-                    emp_id = None
-                    funcionario_atual = None
-                    bloco_atual = ""
-            else:
-                if emp_id:
-                    bloco_atual += linha + "\n"
-
-        if bloco_atual.strip() and emp_id:
-            processar_bloco_iob(funcionario_atual, emp_id, bloco_atual)
 
         df = pd.DataFrame(dados_funcionarios)
         if df.empty:
