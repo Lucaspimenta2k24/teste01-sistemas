@@ -201,18 +201,21 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
             return pd.DataFrame()
 
         linhas = texto_completo.split('\n')
-        funcionario_atual = "Desconhecido"
-        emp_id = "1"
+        funcionario_atual = None
+        emp_id = None
         bloco_atual = ""
 
         def processar_bloco_iob(nome_func, id_emp, texto_bloco):
+            if not id_emp or not nome_func:
+                return
+
             match_base_irrf = re.search(r"Base\s+Bruta\s+de\s+IRRF\s*:\s*([\d\.]+,\d{2})", texto_bloco, re.IGNORECASE)
             if not match_base_irrf:
                 match_base_irrf = re.search(r"BASE\s+BRUTA\s+DE\s+IRRF.*?([\d\.]+,\d{2})", texto_bloco, re.IGNORECASE | re.DOTALL)
             
             base_irrf = match_base_irrf.group(1) if match_base_irrf else "0,00"
             
-            if id_emp and not any(d.get('Código Empregado') == id_emp and d.get('Base IRRF') == base_irrf for d in dados_funcionarios):
+            if not any(d.get('Código Empregado') == id_emp and d.get('Base IRRF') == base_irrf for d in dados_funcionarios):
                 dados_funcionarios.append({
                     "Empresa": str(codigo_empresa).strip(),
                     "Código Empregado": id_emp,
@@ -225,7 +228,7 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
 
         for linha in linhas:
             if "Funcionário:" in linha:
-                if bloco_atual.strip():
+                if bloco_atual.strip() and emp_id:
                     processar_bloco_iob(funcionario_atual, emp_id, bloco_atual)
                 
                 match_func = re.search(r"Funcionário:\s*(\d+)\s*-\s*(.+)", linha, re.IGNORECASE)
@@ -233,14 +236,16 @@ def extrair_dados_extrato_iob(caminho_pdf, codigo_empresa="1", codigo_rubrica="2
                     emp_id = match_func.group(1).strip()
                     nome_completo = match_func.group(2).split("Adm:")[0].split("Função:")[0].strip()
                     funcionario_atual = " ".join(nome_completo.split())
+                    bloco_atual = linha + "\n"
                 else:
-                    emp_id = "1"
-                    funcionario_atual = "Funcionário"
-                bloco_atual = linha + "\n"
+                    emp_id = None
+                    funcionario_atual = None
+                    bloco_atual = ""
             else:
-                bloco_atual += linha + "\n"
+                if emp_id:
+                    bloco_atual += linha + "\n"
 
-        if bloco_atual.strip():
+        if bloco_atual.strip() and emp_id:
             processar_bloco_iob(funcionario_atual, emp_id, bloco_atual)
 
         df = pd.DataFrame(dados_funcionarios)
